@@ -22,14 +22,35 @@ if info:
 else:
     st.info("No voice profile yet.")
 
-st.subheader("1. Provide a recording")
-st.markdown(f"Use **your own voice** (or a voice you have explicit permission to use). "
-            f"Speak clearly for **10–20 s** (at least {tts.MIN_REF_S:.0f} s; longer recordings are trimmed to the first "
-            f"{tts.USE_REF_S:.0f} s) in a quiet room. WAV only.")
+PASSAGES = {
+    "Everyday": "Good morning! I'm recording my own voice for a personal assistant. I'll speak clearly, at a natural "
+                "pace, as if I were explaining something to a friend. Whether it's the weather, a quick recipe, or "
+                "my calendar, I want the answer to sound just like me.",
+    "Varied sounds": "The quick brown fox jumps over the lazy dog. Six big boats sailed through the misty harbor at "
+                     "dawn, while seagulls circled above. Please call me when the package arrives, and remind me to "
+                     "buy fresh bread, oranges, and a little honey.",
+    "Conversational": "Honestly, I think the best way to learn something new is to try it yourself. Start small, "
+                      "make a few mistakes, and keep going. By the end of the week, you'll be surprised how much you "
+                      "remember, and how much fun it was.",
+}
+
+st.subheader("1. Record or upload your voice")
+st.markdown("Use **your own voice** (or a voice you have explicit permission to use), in a quiet room.")
 consent = st.checkbox("This is my own voice, or I have explicit permission to use it.")
-c1, c2 = st.columns(2)
-uploaded = c1.file_uploader("Upload a WAV file", type=["wav"])
-recorded = c2.audio_input("…or record now")
+
+choice = st.selectbox("Reading passage", list(PASSAGES))
+with st.container(border=True):
+    st.caption("READ THIS ALOUD")
+    st.markdown(f"<p style='font-size:1.25rem; line-height:1.7; margin:0'>{PASSAGES[choice]}</p>",
+                unsafe_allow_html=True)
+st.caption(f"Click the mic, wait a second, read the passage at a natural pace (about 15–20 s), then click stop. "
+           f"Minimum {tts.MIN_REF_S:.0f} s. Longer recordings are trimmed to the first {tts.USE_REF_S:.0f} s.")
+
+tab_rec, tab_up = st.tabs(["🎤 Record in browser", "⬆️ Upload a WAV"])
+with tab_rec:
+    recorded = st.audio_input("Record")
+with tab_up:
+    uploaded = st.file_uploader("WAV file (16-bit PCM)", type=["wav"])
 wav = uploaded.getvalue() if uploaded else (recorded.getvalue() if recorded else None)
 
 if wav:
@@ -38,7 +59,15 @@ if wav:
         dur, rms = wav_info(wav)
         st.caption(f"{dur:.1f} s · speech level {to_dbfs(rms):.0f} dBFS (needs above {to_dbfs(SILENCE_RMS):.0f}; "
                    f"normal speech is about -35 to -15)")
-        if to_dbfs(SILENCE_RMS) < to_dbfs(rms) < -35:
+        if rms < SILENCE_RMS:
+            st.error(
+                "No sound was captured. The browser is not getting audio from your microphone.\n\n"
+                "- Open this app in a normal Chrome / Edge / Safari **tab**, not VS Code's built-in preview or Simple "
+                "Browser (those block the microphone).\n"
+                "- Click the lock icon in the address bar, allow the microphone, and pick the right input device.\n"
+                "- Check the Mac input level in System Settings → Sound → Input.\n"
+                "- Or record in Voice Memos, export as WAV, and use the **Upload a WAV** tab.")
+        elif to_dbfs(SILENCE_RMS) < to_dbfs(rms) < -35:
             st.warning("This recording is quiet. It will be boosted automatically, but also check your microphone "
                        "input volume and that the right microphone is selected.")
     except AppError as e:
