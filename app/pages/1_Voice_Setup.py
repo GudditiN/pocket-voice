@@ -6,7 +6,7 @@ import streamlit as st
 
 import tts
 import ui
-from audio import wav_info
+from audio import SILENCE_RMS, to_dbfs, wav_info
 from errors import AppError
 
 ui.setup_page("Voice Setup", "🎤")
@@ -36,7 +36,11 @@ if wav:
     st.audio(wav, format="audio/wav")  # preview; replace by uploading/recording again
     try:
         dur, rms = wav_info(wav)
-        st.caption(f"{dur:.1f} s · level {rms:.3f}")
+        st.caption(f"{dur:.1f} s · speech level {to_dbfs(rms):.0f} dBFS (needs above {to_dbfs(SILENCE_RMS):.0f}; "
+                   f"normal speech is about -35 to -15)")
+        if to_dbfs(SILENCE_RMS) < to_dbfs(rms) < -35:
+            st.warning("This recording is quiet. It will be boosted automatically, but also check your microphone "
+                       "input volume and that the right microphone is selected.")
     except AppError as e:
         st.error(e.message)
 

@@ -41,6 +41,7 @@ def run_turn(audio_bytes: bytes, history: list[dict], system_prompt: str | None 
         r.in_audio_s, rms = audio.wav_info(audio_bytes)
         if r.in_audio_s < 0.3 or rms < audio.SILENCE_RMS:
             raise AppError("bad_audio", "The recording is empty or silent. Try again.")
+        audio_bytes = audio.normalize_wav(audio_bytes)  # help Whisper with quiet microphones
 
         on_status("Transcribing")
         t = time.perf_counter()

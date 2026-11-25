@@ -13,7 +13,7 @@ import time
 
 import numpy as np
 
-from audio import SILENCE_RMS, float_to_wav, trim_wav, wav_info
+from audio import SILENCE_RMS, float_to_wav, normalize_wav, to_dbfs, trim_wav, wav_info
 from config import get_settings
 from errors import AppError
 
@@ -40,7 +40,8 @@ def validate_reference(wav_bytes: bytes) -> float:
     if duration > MAX_INPUT_S:
         raise AppError("bad_audio", f"Recording is {duration / 60:.0f} min; please use a clip under {MAX_INPUT_S / 60:.0f} min (10-20s is ideal).")
     if rms < SILENCE_RMS:
-        raise AppError("bad_audio", "The recording is silent or too quiet.")
+        raise AppError("bad_audio", f"The recording is silent or too quiet (speech level {to_dbfs(rms):.0f} dBFS; "
+                                    f"need above {to_dbfs(SILENCE_RMS):.0f}). Check the mic isn't muted or too far away.")
     return duration
 
 
@@ -85,6 +86,7 @@ def build_profile(wav_bytes: bytes) -> dict:
     if trimmed:  # a clip of 10-20 s is enough; keep the first USE_REF_S seconds
         wav_bytes = trim_wav(wav_bytes, USE_REF_S)
         validate_reference(wav_bytes)  # the kept part must contain speech
+    wav_bytes = normalize_wav(wav_bytes)  # boost a quiet recording before encoding the voice
     duration = min(original, USE_REF_S)
     if shutil.disk_usage(s.data_dir if s.data_dir.exists() else s.data_dir.parent).free < 200 * 1024**2:
         raise AppError("disk", "Less than 200 MB of free disk space.")
