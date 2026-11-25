@@ -1,0 +1,18 @@
+{
+  "name": "pocket-voice",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install --quiet uv && uv sync && chmod +x run.sh",
+  "forwardPorts": [8501],
+  "portsAttributes": {
+    "8501": { "label": "Voice assistant", "visibility": "private", "onAutoForward": "openBrowser" }
+  },
+  "containerEnv": {
+    "HF_HOME": "${containerWorkspaceFolder}/.cache/huggingface",
+    "DATA_DIR": "${containerWorkspaceFolder}/data"
+  },
+  "secrets": {
+    "GROQ_API_KEY": { "description": "Groq API key (server-side only)" },
+    "APP_PASSWORD": { "description": "Optional password to open the app" }
+  },
+  "hostRequirements": { "cpus": 4, "memory": "8gb" }
+}
