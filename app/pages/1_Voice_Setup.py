@@ -6,7 +6,7 @@ import streamlit as st
 
 import tts
 import ui
-from audio import SILENCE_RMS, to_dbfs, wav_info
+from audio import SILENCE_RMS, decode_to_wav, to_dbfs, wav_info
 from errors import AppError
 
 ui.setup_page("Voice Setup", "🎤")
@@ -50,8 +50,16 @@ tab_rec, tab_up = st.tabs(["🎤 Record in browser", "⬆️ Upload a WAV"])
 with tab_rec:
     recorded = st.audio_input("Record")
 with tab_up:
-    uploaded = st.file_uploader("WAV file (16-bit PCM)", type=["wav"])
-wav = uploaded.getvalue() if uploaded else (recorded.getvalue() if recorded else None)
+    uploaded = st.file_uploader("Audio file (WAV, MP3, FLAC or OGG)", type=["wav", "mp3", "flac", "ogg"],
+                                help="M4A/AAC isn't supported. Convert it to MP3 or WAV first.")
+wav = None
+if uploaded:
+    try:
+        wav = decode_to_wav(uploaded.getvalue())
+    except AppError as e:
+        st.error(e.message)
+elif recorded:
+    wav = recorded.getvalue()
 
 if wav:
     st.audio(wav, format="audio/wav")  # preview; replace by uploading/recording again
@@ -66,7 +74,7 @@ if wav:
                 "Browser (those block the microphone).\n"
                 "- Click the lock icon in the address bar, allow the microphone, and pick the right input device.\n"
                 "- Check the Mac input level in System Settings → Sound → Input.\n"
-                "- Or record in Voice Memos, export as WAV, and use the **Upload a WAV** tab.")
+                "- Or record in another app and use the **Upload** tab (WAV, MP3, FLAC or OGG).")
         elif to_dbfs(SILENCE_RMS) < to_dbfs(rms) < -35:
             st.warning("This recording is quiet. It will be boosted automatically, but also check your microphone "
                        "input volume and that the right microphone is selected.")

@@ -46,6 +46,30 @@ def to_dbfs(level: float) -> float:
     return 20 * float(np.log10(max(level, 1e-5)))
 
 
+def decode_to_wav(data: bytes) -> bytes:
+    """Return 16-bit PCM WAV bytes for an uploaded WAV, MP3, FLAC or OGG file (no ffmpeg needed).
+
+    16-bit PCM WAV passes through untouched; anything else is decoded with soundfile, mixed to mono.
+    """
+    try:
+        wav_info(data)
+        return data
+    except AppError:
+        pass
+    try:
+        import soundfile as sf
+    except ImportError:
+        raise AppError("bad_audio", "Only 16-bit PCM WAV is supported here (install soundfile for MP3/FLAC/OGG).") from None
+    try:
+        x, rate = sf.read(io.BytesIO(data), dtype="float32", always_2d=True)
+    except Exception:
+        raise AppError("bad_audio", "Could not read this audio file. Supported: WAV, MP3, FLAC, OGG "
+                                    "(not M4A/AAC: convert it to MP3 or WAV first).") from None
+    if x.size == 0:
+        raise AppError("bad_audio", "The audio file contains no audio.")
+    return float_to_wav(x.mean(axis=1), int(rate))
+
+
 def normalize_wav(data: bytes, target_dbfs: float = TARGET_DBFS) -> bytes:
     """Boost quiet 16-bit PCM audio so speech sits near target_dbfs.
 

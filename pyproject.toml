@@ -12,6 +12,7 @@ dependencies = [
     "psutil>=5.9",
     "groq>=0.11",
     "numpy>=1.26",
+    "soundfile>=0.12",  # decodes MP3/FLAC/OGG uploads (bundles libsndfile; no ffmpeg needed)
 ]
 
 [project.optional-dependencies]

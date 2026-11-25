@@ -132,11 +132,11 @@ The `pv-data` volume keeps your voice profile, model cache and database between 
 
 | Page | What to do |
 |---|---|
-| **Voice Setup** | Upload a WAV or record in the browser. Preview it. Tick consent, then create the profile. Test with any sentence. Re-upload to replace the profile, or delete it with one click. |
+| **Voice Setup** | Read the on-screen passage while recording in the browser, or upload a WAV, MP3, FLAC or OGG file. Preview it. Tick consent, then create the profile. Test with any sentence. Re-upload to replace the profile, or delete it with one click. |
 | **Assistant** | Click the mic to start and stop recording. Status shows Ready → Transcribing → Generating response → Generating speech → Completed (or Failed with the reason). The sidebar lets you edit the system prompt and clear the conversation. |
 | **Dashboard** | Pick a time range. The **System** tab shows resources. The **Voice & usage** tab shows latency, requests, models and errors. It refreshes every 5 s while open. |
 
-**Tips for a good voice profile:** a quiet room, one speaker, 10–20 s of natural speech, and no music or background noise. Recordings must be at least 5 s. Longer ones are **trimmed to the first 20 s** automatically (anything over 10 minutes is rejected). WAV only (16-bit PCM).
+**Tips for a good voice profile:** a quiet room, one speaker, 10–20 s of natural speech, and no music or background noise. Recordings must be at least 5 s. Longer ones are **trimmed to the first 20 s** automatically (anything over 10 minutes is rejected). Upload formats: WAV, MP3, FLAC, OGG (not M4A/AAC: convert with `afconvert -f WAVE -d LEI16@16000 -c 1 in.m4a out.wav` on a Mac).
 
 ---
 
@@ -201,7 +201,7 @@ Honest labelling: network figures are **system-wide** (per-process network isn't
 - About 1,200 lines of app code in 13 Python files, plus about 340 lines of tests.
 - The repo is under 1 MB, with no model files committed.
 - One process and one SQLite file. No extra services.
-- 7 direct dependencies: `pocket-tts`, `torch`, `streamlit`, `plotly`, `pandas`, `psutil`, `groq` (plus `numpy`, which PyTorch needs).
+- 8 direct dependencies: `pocket-tts`, `torch`, `streamlit`, `plotly`, `pandas`, `psutil`, `groq`, `soundfile` (plus `numpy`, which PyTorch needs).
 
 **By design**
 - ASR and the LLM run on Groq, so no local Whisper or LLM is loaded.
@@ -210,7 +210,7 @@ Honest labelling: network figures are **system-wide** (per-process network isn't
 - The model is loaded once, and the voice profile is encoded once and reused.
 - Bounded idle cost: sampling every 5 s, one database write every 30 s, dashboard refresh only while open.
 - Requests run one at a time, so there is no concurrency overhead.
-- No ffmpeg needed (the browser recorder produces WAV).
+- No ffmpeg needed: the browser recorder produces WAV, and MP3/FLAC/OGG uploads are decoded by the small `soundfile` package.
 
 **Real numbers: fill these in after running the benchmark**
 
@@ -285,7 +285,7 @@ Verify license terms before redistributing.
 ## ⚠️ Known limitations
 - Groq ASR and LLM need internet access and are subject to Groq's rate limits.
 - Voice quality depends on a clean reference clip.
-- Voice upload is WAV only (16-bit PCM).
+- Voice upload supports WAV, MP3, FLAC and OGG, but not M4A/AAC.
 - Requests run one at a time (single-user demo). Speech is generated in full before playback, with no streaming in the UI.
 - Metrics in Codespaces/Docker describe the container/VM. Network figures are system-wide.
 - Not included: voice-activity detection (the browser recorder already has start/stop), a preset-voice fallback engine, and Windows/Docker/local validation.
