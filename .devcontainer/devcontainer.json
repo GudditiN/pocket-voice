@@ -12,6 +12,7 @@
   },
   "secrets": {
     "GROQ_API_KEY": { "description": "Groq API key (server-side only)" },
+    "HF_TOKEN": { "description": "Hugging Face read token (needed for the gated PocketTTS voice-cloning weights)" },
     "APP_PASSWORD": { "description": "Optional password to open the app" }
   },
   "hostRequirements": { "cpus": 4, "memory": "8gb" }

@@ -81,6 +81,7 @@ Pipeline: `mic → Groq Whisper → Groq chat model → PocketTTS (your voice) �
 | Secret | Required | Purpose |
 |---|---|---|
 | `GROQ_API_KEY` | ✅ | Your [Groq](https://console.groq.com) API key (server-side only) |
+| `HF_TOKEN` | ✅ for voice cloning | A Hugging Face **read** token. The cloning weights are gated: first accept the terms at [huggingface.co/kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts) while logged in, then create a token at [Settings → Tokens](https://huggingface.co/settings/tokens). |
 | `APP_PASSWORD` | optional | Password gate for the app |
 
 Add them *before* creating the Codespace, or restart it afterwards.
@@ -261,7 +262,8 @@ The benchmark prints its results and saves them to `data/benchmark.json`.
 | "GROQ_API_KEY is not set" | Add the secret, then restart the Codespace (or export it and restart the app). |
 | "Groq rejected the API key" | Check the key value in your secret. |
 | "Groq rate limit reached" | Wait a moment, or use a smaller model. |
-| Model download fails | Check the network and disk space. The weights may need a Hugging Face login or terms acceptance on the model page. |
+| "Could not download the weights for the model with voice cloning" | The cloning weights are gated. Accept the terms at [huggingface.co/kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts), create a read token, set it as `HF_TOKEN` (Codespaces secret, or `export HF_TOKEN=...` before `./run.sh`), and restart. |
+| Other model download failures | Check the network and free disk space. |
 | Mic doesn't record | Allow microphone access for the `*.app.github.dev` site. Use the HTTPS forwarded URL. |
 | "No voice profile yet" | Create one on the Voice Setup page. |
 | "Recording is silent or too quiet" / "too short" | Record 10–20 s, closer to the mic, in a quiet room. |

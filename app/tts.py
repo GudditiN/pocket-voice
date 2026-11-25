@@ -45,6 +45,19 @@ def validate_reference(wav_bytes: bytes) -> float:
     return duration
 
 
+def _explain(prefix: str, e: Exception) -> AppError:
+    """Turn a PocketTTS exception into an AppError, with setup steps for the gated voice-cloning weights."""
+    text = str(e)
+    if "voice cloning" in text.lower() and ("huggingface.co" in text or "hf auth" in text):
+        return AppError(
+            "tts",
+            "Voice cloning needs access to a gated Hugging Face model. (1) Open https://huggingface.co/kyutai/pocket-tts "
+            "while logged in and accept the terms. (2) Create a read token at https://huggingface.co/settings/tokens. "
+            "(3) Provide it as the HF_TOKEN environment variable or Codespaces secret (or run `uv run hf auth login`), "
+            "then restart the app.")
+    return AppError("tts", f"{prefix}: {text}")
+
+
 def _get_model():
     global _model
     if _model is None:
@@ -56,7 +69,7 @@ def _get_model():
         except ImportError:
             raise AppError("tts", "pocket-tts is not installed. Run `uv sync`.") from None
         except Exception as e:  # download failures, auth errors, out of disk, ...
-            raise AppError("tts", f"Could not load the PocketTTS model: {e}") from e
+            raise _explain("Could not load the PocketTTS model", e) from e
         last_timings["model_load_s"] = time.perf_counter() - t
         log.info("PocketTTS loaded in %.1fs", last_timings["model_load_s"])
     return _model
@@ -110,7 +123,7 @@ def build_profile(wav_bytes: bytes) -> dict:
             raise
         except Exception as e:
             ref_tmp.unlink(missing_ok=True)
-            raise AppError("tts", f"Voice profile creation failed: {e}") from e
+            raise _explain("Voice profile creation failed", e) from e
         os.replace(ref_tmp, s.reference_path)
         os.replace(prof_tmp, s.profile_path)
         os.chmod(s.profile_path, 0o600)
