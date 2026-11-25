@@ -26,6 +26,28 @@ def test_success_records_metrics_without_content(monkeypatch, wav):
     assert "Paris" not in str(row) and "France" not in str(row)  # lengths only, never content
 
 
+def test_typed_question_skips_speech_recognition(monkeypatch):
+    setup_ok(monkeypatch)
+
+    def no_asr(b):
+        raise AssertionError("ASR must not run for typed questions")
+
+    monkeypatch.setattr(asr, "transcribe", no_asr)
+    seen = []
+    r = pipeline.run_turn(None, [], text="  What is 2+2?  ", on_status=seen.append)
+    assert r.status == "success" and r.question == "What is 2+2?" and r.audio_wav
+    assert seen == ["Generating response", "Generating speech", "Completed"]
+    (row,) = store.query_requests(0)
+    assert row["asr_ms"] is None and row["in_audio_s"] is None and row["asr_model"] == "typed"
+    assert row["llm_ms"] is not None and row["tts_ms"] is not None
+
+
+def test_empty_typed_question(monkeypatch):
+    setup_ok(monkeypatch)
+    r = pipeline.run_turn(None, [], text="   ")
+    assert r.status == "failed" and r.error_category == "empty_input"
+
+
 def test_no_profile(monkeypatch, wav):
     store.init()
     monkeypatch.setattr(tts, "profile_exists", lambda: False)

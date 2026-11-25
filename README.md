@@ -34,7 +34,7 @@ Show that a talking assistant with a **personal voice** can be small, simple and
 
 ## ✨ What you get
 - 🎤 **Voice Setup:** upload or record your voice, preview it, build a profile, test it, replace or delete it.
-- 💬 **Assistant:** click the mic, ask a question, see the transcript and answer, and hear it in your voice. Conversation history is kept.
+- 💬 **Assistant:** click the mic **or type** a question, see the transcript and answer, and hear it in your voice. Conversation history is kept.
 - 📊 **Dashboard:** system resources and voice/API performance, with 15 min / 1 h / 24 h ranges.
 - 🛡️ **Privacy defaults:** local storage of voice data, server-side API key, optional password, no audio or transcripts in analytics.
 - 🧪 **Tests and a benchmark script** for the voice, Groq (mocked), monitoring and storage code.
@@ -110,11 +110,10 @@ Model weights are cached in `.cache/huggingface` and your profile is saved in `d
 
 ```bash
 uv sync
-cp .env.example .env      # then put your GROQ_API_KEY in it
-set -a; source .env; set +a
+cp .env.example .env      # then put your GROQ_API_KEY and HF_TOKEN in it
 ./run.sh
 ```
-Needs about 1–2 GB of free disk for PyTorch and the model. The app reads settings from environment variables, so load `.env` into your shell as shown (or export the variables yourself).
+Needs about 1–2 GB of free disk for PyTorch and the model. The app reads the `.env` file in the project folder by itself, so there is nothing to export.
 </details>
 
 <details>
@@ -144,13 +143,13 @@ The `pv-data` volume keeps your voice profile, model cache and database between 
 ## 🛠️ Customize it
 
 ### Settings (environment variables)
-Set them in `.env`, your shell, Docker `-e`, or Codespaces secrets. See [.env.example](.env.example).
+Put them in a `.env` file in the project folder (copy [.env.example](.env.example)), or set them in your shell, Docker `-e`, or Codespaces secrets. The app loads `.env` at startup, so restart it after editing. Variables already set in the environment (such as Codespaces secrets) take priority over `.env`, and blank values in `.env` are ignored. `.env` is git-ignored: never commit it.
 
 | Variable | Default | What it changes |
 |---|---|---|
 | `GROQ_API_KEY` | none | **Required.** Groq API key. |
 | `GROQ_ASR_MODEL` | `whisper-large-v3-turbo` | Speech-recognition model. `whisper-large-v3` is the other option. |
-| `GROQ_LLM_MODEL` | `llama-3.3-70b-versatile` | Chat model. Any current [Groq chat model ID](https://console.groq.com/docs/models) works. A smaller model answers faster. |
+| `GROQ_LLM_MODEL` | `openai/gpt-oss-20b` | Chat model. Use a [Groq model ID](https://console.groq.com/docs/models) your key can access: `openai/gpt-oss-20b` (fastest) or `openai/gpt-oss-120b`. The Llama models there are marked Enterprise and return a 404 for regular keys. GPT-OSS models are called with low reasoning effort. |
 | `ASR_BACKEND` | `groq` | `groq` or `local` (see below). |
 | `SYSTEM_PROMPT` | short, spoken-style answers | The assistant's personality and answer style. You can also edit it live in the Assistant sidebar (per session). |
 | `HISTORY_TURNS` | `6` | How many past question/answer pairs are sent to the model. `0` disables memory. |
@@ -262,6 +261,7 @@ The benchmark prints its results and saves them to `data/benchmark.json`.
 | "GROQ_API_KEY is not set" | Add the secret, then restart the Codespace (or export it and restart the app). |
 | "Groq rejected the API key" | Check the key value in your secret. |
 | "Groq rate limit reached" | Wait a moment, or use a smaller model. |
+| "Groq could not find the model …" (404) | Your key can't use that model ID. The error lists the models your key can use. Set `GROQ_LLM_MODEL` (or `GROQ_ASR_MODEL`) to one of them and restart. You can also list them with `curl -s https://api.groq.com/openai/v1/models -H "Authorization: Bearer $GROQ_API_KEY"`. |
 | "Could not download the weights for the model with voice cloning" | The cloning weights are gated. Accept the terms at [huggingface.co/kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts), create a read token, set it as `HF_TOKEN` (Codespaces secret, or `export HF_TOKEN=...` before `./run.sh`), and restart. |
 | Other model download failures | Check the network and free disk space. |
 | Mic doesn't record | Allow microphone access for the `*.app.github.dev` site. Use the HTTPS forwarded URL. |

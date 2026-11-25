@@ -11,9 +11,19 @@ class AppError(Exception):
         self.message = message
 
 
-def from_groq(exc: Exception, stage: str) -> AppError:
-    """Translate a groq SDK exception into an AppError. stage is 'asr' or 'llm'."""
+def from_groq(exc: Exception, stage: str, model: str | None = None, hint: str | None = None) -> AppError:
+    """Translate a groq SDK exception into an AppError. stage is 'asr' or 'llm'.
+
+    model: the model ID that was requested. hint: comma-separated model IDs available to the key (for 404s).
+    """
     import groq
+
+    if isinstance(exc, groq.NotFoundError):
+        var = "GROQ_ASR_MODEL" if stage == "asr" else "GROQ_LLM_MODEL"
+        msg = f"Groq could not find the model {model!r}." if model else "Groq returned 404 (not found)."
+        if hint:
+            msg += f" Models available to your key: {hint}."
+        return AppError("model_not_found", f"{msg} Set {var} to a valid model ID and restart the app.")
 
     if isinstance(exc, (groq.AuthenticationError, groq.PermissionDeniedError)):
         return AppError("auth", "Groq rejected the API key. Check GROQ_API_KEY.")

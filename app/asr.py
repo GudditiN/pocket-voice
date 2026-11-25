@@ -30,7 +30,7 @@ def transcribe(wav_bytes: bytes) -> str:
     except AppError:
         raise
     except Exception as e:
-        raise from_groq(e, "asr") from e
+        raise from_groq(e, "asr", s.asr_model) from e
     return (getattr(resp, "text", "") or "").strip()
 
 

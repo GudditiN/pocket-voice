@@ -5,6 +5,43 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+def load_dotenv(paths: list[Path] | None = None) -> list[str]:
+    """Load KEY=VALUE lines from .env into os.environ. Returns the names of the variables it set.
+
+    Variables that are already set (for example Codespaces secrets) are never overridden, and blank values are
+    skipped so a bare `KEY=` doesn't hide a default. Lines starting with # are comments; `export KEY=...` and
+    quoted values work. Values are never logged.
+    """
+    if paths is None:
+        paths = [Path.cwd() / ".env", Path(__file__).resolve().parent.parent / ".env"]
+    loaded: list[str] = []
+    for path in paths:
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[7:].lstrip()
+            key, sep, val = line.partition("=")
+            key, val = key.strip(), val.strip()
+            if not sep or not key.isidentifier():
+                continue
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                val = val[1:-1]
+            if not val or os.environ.get(key):
+                continue
+            os.environ[key] = val
+            loaded.append(key)
+    return loaded
+
+
+if not os.environ.get("POCKET_VOICE_NO_DOTENV"):  # tests set this so a real .env can't change their behaviour
+    load_dotenv()
+
 DEFAULT_PROMPT = (
     "You are a friendly voice assistant. Answer in one to three short spoken sentences. "
     "Plain text only: no markdown, lists, or emojis."
@@ -71,7 +108,7 @@ def get_settings() -> Settings:
     return Settings(
         groq_api_key=e("GROQ_API_KEY", "").strip(),
         asr_model=e("GROQ_ASR_MODEL", "whisper-large-v3-turbo"),
-        llm_model=e("GROQ_LLM_MODEL", "llama-3.3-70b-versatile"),
+        llm_model=e("GROQ_LLM_MODEL", "openai/gpt-oss-20b"),
         asr_backend=e("ASR_BACKEND", "groq").lower(),
         system_prompt=e("SYSTEM_PROMPT") or DEFAULT_PROMPT,
         data_dir=Path(e("DATA_DIR", "./data")).resolve(),

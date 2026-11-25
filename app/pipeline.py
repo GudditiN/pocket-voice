@@ -29,8 +29,12 @@ class TurnResult:
     timings_ms: dict = field(default_factory=dict)
 
 
-def run_turn(audio_bytes: bytes, history: list[dict], system_prompt: str | None = None,
-             on_status: Callable[[str], None] = lambda s: None) -> TurnResult:
+MAX_QUESTION_CHARS = 1000
+
+
+def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str | None = None,
+             on_status: Callable[[str], None] = lambda s: None, text: str | None = None) -> TurnResult:
+    """One turn. Pass a recording (audio_bytes), or typed text to skip speech recognition."""
     s = get_settings()
     r = TurnResult(request_id=uuid.uuid4().hex[:12])
     t0, ts = time.perf_counter(), time.time()
@@ -38,17 +42,22 @@ def run_turn(audio_bytes: bytes, history: list[dict], system_prompt: str | None 
     try:
         if not tts.profile_exists():
             raise AppError("no_profile", "No voice profile yet. Create one on the Voice Setup page.")
-        r.in_audio_s, rms = audio.wav_info(audio_bytes)
-        if r.in_audio_s < 0.3 or rms < audio.SILENCE_RMS:
-            raise AppError("bad_audio", "The recording is empty or silent. Try again.")
-        audio_bytes = audio.normalize_wav(audio_bytes)  # help Whisper with quiet microphones
+        if text is not None:  # typed question: no speech recognition
+            r.question = text.strip()[:MAX_QUESTION_CHARS]
+            if not r.question:
+                raise AppError("empty_input", "Type a question first.")
+        else:
+            r.in_audio_s, rms = audio.wav_info(audio_bytes or b"")
+            if r.in_audio_s < 0.3 or rms < audio.SILENCE_RMS:
+                raise AppError("bad_audio", "The recording is empty or silent. Try again.")
+            audio_bytes = audio.normalize_wav(audio_bytes)  # help Whisper with quiet microphones
 
-        on_status("Transcribing")
-        t = time.perf_counter()
-        r.question = asr.transcribe(audio_bytes)
-        r.timings_ms["asr"] = (time.perf_counter() - t) * 1000
-        if not r.question:
-            raise AppError("bad_audio", "No speech was recognized. Try again.")
+            on_status("Transcribing")
+            t = time.perf_counter()
+            r.question = asr.transcribe(audio_bytes)
+            r.timings_ms["asr"] = (time.perf_counter() - t) * 1000
+            if not r.question:
+                raise AppError("bad_audio", "No speech was recognized. Try again.")
 
         on_status("Generating response")
         t = time.perf_counter()
@@ -74,7 +83,7 @@ def run_turn(audio_bytes: bytes, history: list[dict], system_prompt: str | None 
             "id": r.request_id, "ts": ts, "asr_ms": r.timings_ms.get("asr"), "llm_ms": r.timings_ms.get("llm"),
             "tts_ms": r.timings_ms.get("tts"), "total_ms": r.timings_ms["total"],
             "in_audio_s": r.in_audio_s, "out_audio_s": r.out_audio_s, "status": r.status,
-            "error_cat": r.error_category, "asr_model": s.asr_model_label, "llm_model": s.llm_model,
+            "error_cat": r.error_category, "asr_model": "typed" if text is not None else s.asr_model_label, "llm_model": s.llm_model,
             "tts_model": tts.MODEL_NAME, "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
             "question_chars": len(r.question), "answer_chars": len(r.answer),  # lengths only, never content

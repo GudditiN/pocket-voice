@@ -56,6 +56,23 @@ def test_answer_returns_usage_and_uses_history(monkeypatch):
     assert roles == ["system", "user", "assistant", "user"]
 
 
+def test_gpt_oss_gets_low_reasoning_and_room_for_the_answer(monkeypatch):
+    c = FakeClient()
+    patch(monkeypatch, c)
+    monkeypatch.setenv("GROQ_LLM_MODEL", "openai/gpt-oss-20b")
+    llm.answer([], "hi")
+    assert c.kwargs["extra_body"] == {"reasoning_effort": "low", "include_reasoning": False}
+    assert c.kwargs["max_completion_tokens"] >= 1000
+
+
+def test_other_models_get_no_reasoning_options(monkeypatch):
+    c = FakeClient()
+    patch(monkeypatch, c)
+    monkeypatch.setenv("GROQ_LLM_MODEL", "some/other-model")
+    llm.answer([], "hi")
+    assert "extra_body" not in c.kwargs and c.kwargs["max_completion_tokens"] == 400
+
+
 @pytest.mark.parametrize("exc,cat", [
     (groq.AuthenticationError("x", response=resp(401), body=None), "auth"),
     (groq.RateLimitError("x", response=resp(429), body=None), "rate_limit"),
@@ -88,6 +105,30 @@ def test_empty_llm_answer(monkeypatch):
     patch(monkeypatch, FakeClient(content="  "))
     with pytest.raises(AppError):
         llm.answer([], "hi")
+
+
+def test_unknown_llm_model_lists_available_models(monkeypatch):
+    c = FakeClient(exc=groq.NotFoundError("x", response=resp(404), body=None))
+    models = [SimpleNamespace(id=i, active=True) for i in
+              ["whisper-large-v3", "llama-3.1-8b-instant", "openai/gpt-oss-20b", "meta/llama-guard-4"]]
+    models.append(SimpleNamespace(id="retired-model", active=False))
+    c.models = SimpleNamespace(list=lambda: SimpleNamespace(data=models))
+    patch(monkeypatch, c)
+    monkeypatch.setenv("GROQ_LLM_MODEL", "old-model")
+    with pytest.raises(AppError) as e:
+        llm.answer([], "hi")
+    assert e.value.category == "model_not_found"
+    assert "'old-model'" in e.value.message and "GROQ_LLM_MODEL" in e.value.message
+    assert "llama-3.1-8b-instant" in e.value.message and "openai/gpt-oss-20b" in e.value.message
+    assert "whisper" not in e.value.message and "guard" not in e.value.message and "retired" not in e.value.message
+
+
+def test_unknown_asr_model_names_the_variable(monkeypatch, wav):
+    patch(monkeypatch, FakeClient(exc=groq.NotFoundError("x", response=resp(404), body=None)))
+    monkeypatch.setenv("GROQ_ASR_MODEL", "no-such-whisper")
+    with pytest.raises(AppError) as e:
+        asr.transcribe(wav(1))
+    assert e.value.category == "model_not_found" and "GROQ_ASR_MODEL" in e.value.message
 
 
 def test_from_groq_unknown_exception():

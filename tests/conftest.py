@@ -1,7 +1,11 @@
-import numpy as np
-import pytest
+import os
 
-from audio import float_to_wav
+os.environ["POCKET_VOICE_NO_DOTENV"] = "1"  # before app modules import config: a real .env must not affect tests
+
+import numpy as np  # noqa: E402
+import pytest  # noqa: E402
+
+from audio import float_to_wav  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
