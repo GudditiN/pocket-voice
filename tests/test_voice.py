@@ -3,7 +3,7 @@ import os
 import pytest
 
 import tts
-from audio import wav_info
+from audio import trim_wav, wav_info
 from errors import AppError
 
 
@@ -24,9 +24,19 @@ def test_reference_too_short(wav):
         tts.validate_reference(wav(1.0))
 
 
-def test_reference_too_long(wav):
-    with pytest.raises(AppError, match="under"):
-        tts.validate_reference(wav(70.0, rate=8000))
+def test_long_reference_is_valid_but_trimmed(wav):
+    assert tts.validate_reference(wav(65.0, rate=8000)) == pytest.approx(65.0, abs=0.01)
+    trimmed = trim_wav(wav(65.0, rate=8000), tts.USE_REF_S)
+    assert wav_info(trimmed)[0] == pytest.approx(tts.USE_REF_S, abs=0.01)
+
+
+def test_trim_leaves_short_audio_unchanged(wav):
+    assert wav_info(trim_wav(wav(6.0), 20.0))[0] == pytest.approx(6.0, abs=0.01)
+
+
+def test_absurdly_long_reference_rejected(wav):
+    with pytest.raises(AppError, match="min"):
+        tts.validate_reference(wav(700.0, rate=4000))
 
 
 def test_reference_silent(wav):

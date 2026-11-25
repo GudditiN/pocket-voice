@@ -24,7 +24,8 @@ else:
 
 st.subheader("1. Provide a recording")
 st.markdown(f"Use **your own voice** (or a voice you have explicit permission to use). "
-            f"Speak clearly for **10–20 s** ({tts.MIN_REF_S:.0f}–{tts.MAX_REF_S:.0f} s allowed) in a quiet room. WAV only.")
+            f"Speak clearly for **10–20 s** (at least {tts.MIN_REF_S:.0f} s; longer recordings are trimmed to the first "
+            f"{tts.USE_REF_S:.0f} s) in a quiet room. WAV only.")
 consent = st.checkbox("This is my own voice, or I have explicit permission to use it.")
 c1, c2 = st.columns(2)
 uploaded = c1.file_uploader("Upload a WAV file", type=["wav"])
@@ -47,6 +48,8 @@ if st.button("Create / replace voice profile", type="primary", disabled=not (wav
             res = tts.build_profile(wav)
             st.success(f"Profile saved in {time.perf_counter() - t:.1f}s "
                        f"(voice encoding {res['voice_state_s']:.1f}s). Future requests reuse it without re-encoding.")
+            if res["trimmed"]:
+                st.info(f"Your {res['original_s']:.0f} s recording was trimmed to its first {res['duration_s']:.0f} s.")
         except AppError as e:
             st.error(f"{e.message}  \n_Category: `{e.category}`_")
 if not consent and wav:

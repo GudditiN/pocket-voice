@@ -13,14 +13,16 @@ import time
 
 import numpy as np
 
-from audio import SILENCE_RMS, float_to_wav, wav_info
+from audio import SILENCE_RMS, float_to_wav, trim_wav, wav_info
 from config import get_settings
 from errors import AppError
 
 log = logging.getLogger(__name__)
 
 MODEL_NAME = "pocket-tts"
-MIN_REF_S, MAX_REF_S = 5.0, 60.0
+MIN_REF_S = 5.0  # shorter recordings are rejected
+USE_REF_S = 20.0  # longer recordings are trimmed to their first USE_REF_S seconds
+MAX_INPUT_S = 600.0  # recordings longer than this are rejected outright
 MAX_TEXT_CHARS = 800
 
 _lock = threading.Lock()  # PocketTTS is not assumed thread-safe: one synthesis at a time
@@ -35,8 +37,8 @@ def validate_reference(wav_bytes: bytes) -> float:
     duration, rms = wav_info(wav_bytes)
     if duration < MIN_REF_S:
         raise AppError("bad_audio", f"Recording is {duration:.1f}s; record at least {MIN_REF_S:.0f}s of clear speech.")
-    if duration > MAX_REF_S:
-        raise AppError("bad_audio", f"Recording is {duration:.0f}s; keep it under {MAX_REF_S:.0f}s (10-20s is ideal).")
+    if duration > MAX_INPUT_S:
+        raise AppError("bad_audio", f"Recording is {duration / 60:.0f} min; please use a clip under {MAX_INPUT_S / 60:.0f} min (10-20s is ideal).")
     if rms < SILENCE_RMS:
         raise AppError("bad_audio", "The recording is silent or too quiet.")
     return duration
@@ -78,7 +80,12 @@ def build_profile(wav_bytes: bytes) -> dict:
     """Validate the recording, store it privately, build the voice state and save it to disk."""
     global _state, _state_mtime
     s = get_settings()
-    duration = validate_reference(wav_bytes)
+    original = validate_reference(wav_bytes)
+    trimmed = original > USE_REF_S
+    if trimmed:  # a clip of 10-20 s is enough; keep the first USE_REF_S seconds
+        wav_bytes = trim_wav(wav_bytes, USE_REF_S)
+        validate_reference(wav_bytes)  # the kept part must contain speech
+    duration = min(original, USE_REF_S)
     if shutil.disk_usage(s.data_dir if s.data_dir.exists() else s.data_dir.parent).free < 200 * 1024**2:
         raise AppError("disk", "Less than 200 MB of free disk space.")
     s.voice_dir.mkdir(parents=True, exist_ok=True)
@@ -106,7 +113,8 @@ def build_profile(wav_bytes: bytes) -> dict:
         os.replace(prof_tmp, s.profile_path)
         os.chmod(s.profile_path, 0o600)
         _state, _state_mtime = state, s.profile_path.stat().st_mtime
-    return {"duration_s": duration, "voice_state_s": last_timings["voice_state_s"]}
+    return {"duration_s": duration, "original_s": original, "trimmed": trimmed,
+            "voice_state_s": last_timings["voice_state_s"]}
 
 
 def _load_state():
