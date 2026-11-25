@@ -11,7 +11,13 @@ from config import get_settings
 ui.setup_page("Assistant", "🎙️")
 s = get_settings()
 
-st.title("🎙️ Voice assistant")
+ui.hero("🎙️ Voice assistant", "Ask a question out loud and hear the answer in your own voice.")
+ui.chips([
+    ("Voice profile ready", "ok") if tts.profile_exists() else ("No voice profile yet", "warn"),
+    ("Groq key set", "ok") if s.groq_api_key else ("Groq key missing", "bad"),
+    (f"ASR {s.asr_model_label}", ""), (f"LLM {s.llm_model}", ""), (f"TTS {tts.MODEL_NAME}", ""),
+])
+ui.flow(["🎤 Listen", "📝 Transcribe", "🧠 Answer", "🔊 Speak"])
 
 ss = st.session_state
 ss.setdefault("history", [])  # [{'role','content'}] for the LLM
@@ -22,7 +28,6 @@ ss.setdefault("prompt", s.system_prompt)
 with st.sidebar:
     st.subheader("Settings")
     ss["prompt"] = st.text_area("System prompt", ss["prompt"], height=140)
-    st.caption(f"ASR: `{s.asr_model_label}` · LLM: `{s.llm_model}` · TTS: `{tts.MODEL_NAME}`")
     if st.button("Clear conversation"):
         ss["history"], ss["turns"], ss["last_audio"] = [], [], None
         st.rerun()

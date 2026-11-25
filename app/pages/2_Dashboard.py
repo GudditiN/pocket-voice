@@ -10,7 +10,7 @@ import store
 import ui
 
 ui.setup_page("Dashboard", "📊")
-st.title("📊 Dashboard")
+ui.hero("📊 Dashboard", "Live CPU, memory, disk and network, plus the latency of every voice request.")
 
 RANGES = {"15 min": 900, "1 hour": 3600, "24 hours": 86400}
 # Fixed colour per series (identity never changes with filtering)

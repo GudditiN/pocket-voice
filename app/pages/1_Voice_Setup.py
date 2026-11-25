@@ -10,7 +10,8 @@ from audio import SILENCE_RMS, decode_to_wav, to_dbfs, wav_info
 from errors import AppError
 
 ui.setup_page("Voice Setup", "🎤")
-st.title("🎤 Voice setup")
+ui.hero("🎤 Voice setup", "Record or upload a short clip and PocketTTS builds a reusable voice profile.")
+ui.flow(["1 Record", "2 Build profile", "3 Test", "4 Use it"])
 st.caption("PocketTTS conditions on a short recording of your voice and saves a reusable *voice profile*. "
            "This is not model training. The recording and profile stay on this machine, are never served by URL, "
            "and are git-ignored.")

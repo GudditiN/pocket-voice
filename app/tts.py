@@ -98,7 +98,7 @@ def build_profile(wav_bytes: bytes) -> dict:
     with _lock:
         model = _get_model()
         try:
-            from pocket_tts.models.tts_model import export_model_state
+            from pocket_tts import export_model_state
 
             t = time.perf_counter()
             state = model.get_state_for_audio_prompt(str(ref_tmp))
