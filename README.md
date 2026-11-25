@@ -57,6 +57,7 @@ Pipeline: `mic → Groq Whisper → Groq chat model → PocketTTS (your voice) �
 ## 🧱 Architecture
 ![Pocket Voice architecture: browser, one Python process (pipeline, ASR, LLM, PocketTTS, monitor), local storage, and Groq cloud services](pocket-voice.png)
 
+pocket-voice.png
 | File | Responsibility |
 |---|---|
 | [app/Home.py](app/Home.py) | Assistant page: mic → answer → audio, status stages, history |
