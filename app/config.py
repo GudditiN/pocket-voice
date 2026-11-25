@@ -31,17 +31,30 @@ class Settings:
     history_turns: int
     sample_interval_s: int
     app_password: str
+    quantize: bool  # int8 quantization of the TTS model (applied at load, so it needs an app restart)
 
     @property
     def voice_dir(self) -> Path:
         return self.data_dir / "voice"
 
     @property
-    def reference_path(self) -> Path:
+    def profiles_dir(self) -> Path:
+        return self.voice_dir / "profiles"
+
+    @property
+    def active_file(self) -> Path:
+        return self.voice_dir / "active.txt"
+
+    @property
+    def tuning_path(self) -> Path:
+        return self.voice_dir / "tuning.json"
+
+    @property
+    def legacy_reference_path(self) -> Path:  # single-profile layout used before named profiles
         return self.voice_dir / "reference.wav"
 
     @property
-    def profile_path(self) -> Path:
+    def legacy_profile_path(self) -> Path:
         return self.voice_dir / "profile.safetensors"
 
     @property
@@ -67,4 +80,5 @@ def get_settings() -> Settings:
         history_turns=_int("HISTORY_TURNS", 6),
         sample_interval_s=max(1, _int("SAMPLE_INTERVAL_S", 5)),
         app_password=e("APP_PASSWORD", ""),
+        quantize=e("POCKET_QUANTIZE", "0").lower() in ("1", "true", "yes"),
     )

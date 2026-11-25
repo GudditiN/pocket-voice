@@ -1,12 +1,14 @@
-"""PocketTTS wrapper: one cached model, one reusable voice profile, strictly sequential synthesis.
+"""PocketTTS wrapper: one cached model, named reusable voice profiles, tunable generation, sequential synthesis.
 
-The "voice profile" is reference-audio conditioning (a saved voice state), NOT fine-tuning.
+A "voice profile" is reference-audio conditioning (a saved voice state), NOT fine-tuning.
 pocket_tts is imported lazily so the rest of the app (and unit tests) work without it.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import shutil
 import threading
 import time
@@ -25,13 +27,18 @@ USE_REF_S = 20.0  # longer recordings are trimmed to their first USE_REF_S secon
 MAX_INPUT_S = 600.0  # recordings longer than this are rejected outright
 MAX_TEXT_CHARS = 800
 
+# Generation settings. Defaults are PocketTTS 4.0's own (temp 0.3, 1 sampler step, eos threshold -4.0).
+# They are plain attributes on the model that are read at generation time, so changing them needs no reload.
+DEFAULT_TUNING = {"temp": 0.3, "steps": 1, "eos_threshold": -4.0}
+_LIMITS = {"temp": (0.05, 1.5), "steps": (1, 8), "eos_threshold": (-10.0, 5.0)}
+
 _lock = threading.Lock()  # PocketTTS is not assumed thread-safe: one synthesis at a time
 _model = None
-_state = None
-_state_mtime: float | None = None
+_states: dict[str, tuple[float, object]] = {}  # profile name -> (file mtime, loaded voice state)
 last_timings: dict[str, float] = {}
 
 
+# ---------------------------------------------------------------- recording validation
 def validate_reference(wav_bytes: bytes) -> float:
     """Check a reference recording. Returns duration in seconds or raises AppError('bad_audio')."""
     duration, rms = wav_info(wav_bytes)
@@ -65,7 +72,7 @@ def _get_model():
         try:
             from pocket_tts import TTSModel
 
-            _model = TTSModel.load_model()
+            _model = TTSModel.load_model(quantize=get_settings().quantize)
         except ImportError:
             raise AppError("tts", "pocket-tts is not installed. Run `uv sync`.") from None
         except Exception as e:  # download failures, auth errors, out of disk, ...
@@ -75,25 +82,114 @@ def _get_model():
     return _model
 
 
-def profile_exists() -> bool:
-    return get_settings().profile_path.exists()
+# ---------------------------------------------------------------- tuning
+def clean_tuning(d: dict | None) -> dict:
+    """Fill defaults and clamp every value into its allowed range."""
+    out = dict(DEFAULT_TUNING)
+    for key, (lo, hi) in _LIMITS.items():
+        try:
+            out[key] = min(max(float((d or {}).get(key, out[key])), lo), hi)
+        except (TypeError, ValueError):
+            pass
+    out["steps"] = int(round(out["steps"]))
+    return out
 
 
-def profile_info() -> dict | None:
+def get_tuning() -> dict:
+    try:
+        return clean_tuning(json.loads(get_settings().tuning_path.read_text()))
+    except (OSError, ValueError):
+        return dict(DEFAULT_TUNING)
+
+
+def save_tuning(d: dict) -> dict:
     s = get_settings()
-    if not s.profile_path.exists():
+    cleaned = clean_tuning(d)
+    s.voice_dir.mkdir(parents=True, exist_ok=True)
+    tmp = s.tuning_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cleaned))
+    os.replace(tmp, s.tuning_path)
+    return cleaned
+
+
+def reset_tuning() -> None:
+    get_settings().tuning_path.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------- profiles
+def slug(name: str) -> str:
+    s = re.sub(r"[^a-z0-9_-]+", "-", (name or "").lower().strip()).strip("-")[:32]
+    if not s:
+        raise AppError("bad_audio", "Give the profile a name using letters or numbers.")
+    return s
+
+
+def _paths(name: str):
+    d = get_settings().profiles_dir / name
+    return d, d / "reference.wav", d / "profile.safetensors"
+
+
+def _migrate_legacy() -> None:
+    """Move the single profile of earlier versions into profiles/default/."""
+    s = get_settings()
+    if s.legacy_profile_path.exists() and not (s.profiles_dir / "default").exists():
+        d, ref, prof = _paths("default")
+        d.mkdir(parents=True, exist_ok=True)
+        os.replace(s.legacy_profile_path, prof)
+        if s.legacy_reference_path.exists():
+            os.replace(s.legacy_reference_path, ref)
+        if not s.active_file.exists():
+            s.active_file.write_text("default")
+
+
+def list_profiles() -> list[dict]:
+    _migrate_legacy()
+    root = get_settings().profiles_dir
+    out = []
+    if root.exists():
+        for d in sorted(root.iterdir()):
+            prof = d / "profile.safetensors"
+            if d.is_dir() and prof.exists():
+                out.append({"name": d.name, "created": prof.stat().st_mtime, "kb": prof.stat().st_size / 1024,
+                            "has_reference": (d / "reference.wav").exists()})
+    return out
+
+
+def active_profile() -> str | None:
+    names = [p["name"] for p in list_profiles()]
+    try:
+        chosen = get_settings().active_file.read_text().strip()
+    except OSError:
+        chosen = ""
+    return chosen if chosen in names else (names[0] if names else None)
+
+
+def set_active(name: str) -> None:
+    if name not in [p["name"] for p in list_profiles()]:
+        raise AppError("no_profile", f"There is no profile named {name!r}.")
+    s = get_settings()
+    s.voice_dir.mkdir(parents=True, exist_ok=True)
+    s.active_file.write_text(name)
+
+
+def profile_exists(name: str | None = None) -> bool:
+    name = name or active_profile()
+    return bool(name) and _paths(name)[2].exists()
+
+
+def profile_info(name: str | None = None) -> dict | None:
+    name = name or active_profile()
+    if not name or not _paths(name)[2].exists():
         return None
-    return {
-        "created": s.profile_path.stat().st_mtime,
-        "profile_kb": s.profile_path.stat().st_size / 1024,
-        "has_reference": s.reference_path.exists(),
-    }
+    _, ref, prof = _paths(name)
+    return {"name": name, "created": prof.stat().st_mtime, "profile_kb": prof.stat().st_size / 1024,
+            "has_reference": ref.exists()}
 
 
-def build_profile(wav_bytes: bytes) -> dict:
-    """Validate the recording, store it privately, build the voice state and save it to disk."""
-    global _state, _state_mtime
+def build_profile(wav_bytes: bytes, name: str = "default", make_active: bool = True) -> dict:
+    """Validate the recording, store it privately, build the voice state and save it as a named profile."""
     s = get_settings()
+    name = slug(name)
     original = validate_reference(wav_bytes)
     trimmed = original > USE_REF_S
     if trimmed:  # a clip of 10-20 s is enough; keep the first USE_REF_S seconds
@@ -103,9 +199,11 @@ def build_profile(wav_bytes: bytes) -> dict:
     duration = min(original, USE_REF_S)
     if shutil.disk_usage(s.data_dir if s.data_dir.exists() else s.data_dir.parent).free < 200 * 1024**2:
         raise AppError("disk", "Less than 200 MB of free disk space.")
-    s.voice_dir.mkdir(parents=True, exist_ok=True)
+    d, ref, prof = _paths(name)
+    d.mkdir(parents=True, exist_ok=True)
     os.chmod(s.voice_dir, 0o700)
-    ref_tmp = s.reference_path.with_suffix(".tmp.wav")
+    ref_tmp = ref.with_suffix(".tmp.wav")
+    prof_tmp = prof.with_suffix(".tmp")
     ref_tmp.write_bytes(wav_bytes)
     os.chmod(ref_tmp, 0o600)
     with _lock:
@@ -116,49 +214,73 @@ def build_profile(wav_bytes: bytes) -> dict:
             t = time.perf_counter()
             state = model.get_state_for_audio_prompt(str(ref_tmp))
             last_timings["voice_state_s"] = time.perf_counter() - t
-            prof_tmp = s.profile_path.with_suffix(".tmp")
             export_model_state(state, str(prof_tmp))
         except AppError:
             ref_tmp.unlink(missing_ok=True)
             raise
         except Exception as e:
             ref_tmp.unlink(missing_ok=True)
+            prof_tmp.unlink(missing_ok=True)
             raise _explain("Voice profile creation failed", e) from e
-        os.replace(ref_tmp, s.reference_path)
-        os.replace(prof_tmp, s.profile_path)
-        os.chmod(s.profile_path, 0o600)
-        _state, _state_mtime = state, s.profile_path.stat().st_mtime
-    return {"duration_s": duration, "original_s": original, "trimmed": trimmed,
+        os.replace(ref_tmp, ref)
+        os.replace(prof_tmp, prof)
+        os.chmod(prof, 0o600)
+        _states[name] = (prof.stat().st_mtime, state)
+    if make_active:
+        set_active(name)
+    return {"name": name, "duration_s": duration, "original_s": original, "trimmed": trimmed,
             "voice_state_s": last_timings["voice_state_s"]}
 
 
-def _load_state():
-    """Load the saved voice state from disk (cached; reloaded if the file changes)."""
-    global _state, _state_mtime
-    s = get_settings()
-    if not s.profile_path.exists():
+def _load_state(name: str):
+    """Load a saved voice state from disk (cached; reloaded if the file changes)."""
+    prof = _paths(name)[2]
+    if not prof.exists():
         raise AppError("no_profile", "No voice profile yet. Create one on the Voice Setup page.")
-    mtime = s.profile_path.stat().st_mtime
-    if _state is None or _state_mtime != mtime:
+    mtime = prof.stat().st_mtime
+    cached = _states.get(name)
+    if cached is None or cached[0] != mtime:
         model = _get_model()
         t = time.perf_counter()
         try:
-            _state = model.get_state_for_audio_prompt(str(s.profile_path))
+            state = model.get_state_for_audio_prompt(str(prof))
         except Exception as e:
             raise AppError("tts", f"Could not load the saved voice profile (re-create it): {e}") from e
-        _state_mtime = mtime
+        _states[name] = (mtime, state)
         last_timings["profile_load_s"] = time.perf_counter() - t
-    return _state
+    return _states[name][1]
 
 
-def synthesize(text: str) -> tuple[bytes, float]:
-    """Speak text with the saved profile. Returns (wav_bytes, audio_duration_s)."""
+def delete_profile(name: str | None = None) -> None:
+    """Delete a profile's reference recording and saved voice state (the active one by default)."""
+    name = name or active_profile()
+    if not name:
+        return
+    d = _paths(name)[0]
+    with _lock:
+        shutil.rmtree(d, ignore_errors=True)
+        _states.pop(name, None)
+
+
+# ---------------------------------------------------------------- synthesis
+def synthesize(text: str, profile: str | None = None, tuning: dict | None = None) -> tuple[bytes, float]:
+    """Speak text. Returns (wav_bytes, audio_duration_s).
+
+    profile: profile name (default: the active one). tuning: override of the saved generation settings.
+    """
     text = (text or "").strip()
     if not text:
         raise AppError("tts", "Nothing to speak.")
+    t = clean_tuning(tuning) if tuning is not None else get_tuning()
+    name = profile or active_profile()
+    if not name:
+        raise AppError("no_profile", "No voice profile yet. Create one on the Voice Setup page.")
     with _lock:
-        state = _load_state()
+        state = _load_state(name)
         model = _get_model()
+        model.temp = t["temp"]
+        model.sampler_decode_steps = t["steps"]
+        model.eos_threshold = t["eos_threshold"]
         try:
             audio = model.generate_audio(state, text[:MAX_TEXT_CHARS])
         except Exception as e:
@@ -166,13 +288,3 @@ def synthesize(text: str) -> tuple[bytes, float]:
         samples = np.asarray(audio.detach().cpu().numpy() if hasattr(audio, "detach") else audio, dtype=np.float32).reshape(-1)
         rate = int(model.sample_rate)
     return float_to_wav(samples, rate), len(samples) / rate
-
-
-def delete_profile() -> None:
-    """Delete the reference recording and the saved voice state."""
-    global _state, _state_mtime
-    s = get_settings()
-    with _lock:
-        for p in (s.reference_path, s.profile_path):
-            p.unlink(missing_ok=True)
-        _state, _state_mtime = None, None

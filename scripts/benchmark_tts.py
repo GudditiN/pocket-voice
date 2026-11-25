@@ -43,11 +43,14 @@ def main():
     out["model_load_s"] = round(tts.last_timings["model_load_s"], 2)
     out["rss_after_load_mb"] = mb(proc.memory_info().rss)
 
-    info = tts.build_profile(Path(args.ref).read_bytes())
+    out["quantized"] = get_settings().quantize
+    out["tuning"] = tts.get_tuning()
+    # A separate profile name, so your real profiles are untouched.
+    info = tts.build_profile(Path(args.ref).read_bytes(), name="benchmark", make_active=False)
     out["voice_state_s"] = round(info["voice_state_s"], 2)
-    tts._state = None  # force a reload from the saved file, as after an app restart
+    tts._states.clear()  # force a reload from the saved file, as after an app restart
     t = time.perf_counter()
-    tts._load_state()
+    tts._load_state("benchmark")
     out["profile_reload_s"] = round(time.perf_counter() - t, 2)
 
     rows = []
@@ -56,7 +59,7 @@ def main():
     for text in SENTENCES:
         for _ in range(args.runs):
             t = time.perf_counter()
-            _, secs = tts.synthesize(text)
+            _, secs = tts.synthesize(text, profile="benchmark")
             took = time.perf_counter() - t
             rows.append({"chars": len(text), "audio_s": round(secs, 2), "gen_s": round(took, 2), "rtf": round(took / secs, 2)})
     wall = time.perf_counter() - wall0
@@ -68,7 +71,7 @@ def main():
 
     # Time to first audio chunk (streaming API), best effort
     try:
-        model, state = tts._get_model(), tts._load_state()
+        model, state = tts._get_model(), tts._load_state("benchmark")
         t = time.perf_counter()
         next(iter(model.generate_audio_stream(state, SENTENCES[1])))
         out["time_to_first_audio_s"] = round(time.perf_counter() - t, 2)

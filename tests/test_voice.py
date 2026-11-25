@@ -54,15 +54,16 @@ def test_synthesize_without_profile():
     assert e.value.category == "no_profile"
 
 
-def test_delete_profile_removes_files(tmp_path):
+def test_delete_profile_removes_files():
     from config import get_settings
 
-    s = get_settings()
-    s.voice_dir.mkdir(parents=True)
-    s.reference_path.write_bytes(b"x")
-    s.profile_path.write_bytes(b"x")
-    tts.delete_profile()
-    assert not s.reference_path.exists() and not tts.profile_exists()
+    d = get_settings().profiles_dir / "a"
+    d.mkdir(parents=True)
+    (d / "reference.wav").write_bytes(b"x")
+    (d / "profile.safetensors").write_bytes(b"x")
+    assert tts.profile_exists("a")
+    tts.delete_profile("a")
+    assert not d.exists() and not tts.profile_exists("a") and tts.list_profiles() == []
 
 
 @pytest.mark.slow
@@ -71,6 +72,6 @@ def test_real_profile_roundtrip():
     """Real PocketTTS: build profile, drop in-memory state, reload from disk, synthesize."""
     tts.build_profile(open(os.environ["REF_WAV"], "rb").read())
     assert tts.profile_exists()
-    tts._state = None  # simulate a restart: must load from the saved file
+    tts._states.clear()  # simulate a restart: must load from the saved file
     out, secs = tts.synthesize("This is a test.")
     assert secs > 0.5 and wav_info(out)[0] == pytest.approx(secs, abs=0.1)
