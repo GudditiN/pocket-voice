@@ -13,6 +13,8 @@ Goal: ask in Telugu and hear the answer in **your own voice**, in Telugu.
 | [3](#phase-3--measure-quality) | Measure quality | A Telugu listener | Go / no-go decision |
 | [4](#phase-4--train-your-own-telugu-model) | Train your own model, **only if Phase 3 fails** | NVIDIA GPU, 100+ hours of speech | Your own Telugu model |
 
+Training on **your own recordings** is explained in detail in [Training](TRAINING.md).
+
 Want **slang or a regional dialect**? See [Slang and dialect](#slang-and-dialect), including how to fine-tune an existing model.
 
 **You do not need to train anything to get started.** You also do not need to train a model on your own voice: after the model speaks Telugu, your voice is cloned from a short recording, as today.

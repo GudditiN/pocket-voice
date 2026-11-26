@@ -365,6 +365,8 @@ Also delete any loose recordings and `compare_*.wav` files you created.
 
 ## 🏋️ Train or fine-tune (advanced)
 
+📘 **Detailed step-by-step guide for training on your own recordings: [docs/TRAINING.md](docs/TRAINING.md).**
+
 > **Do you need this?** For making the assistant sound like **you**, usually **no**. Cloning (Steps 1–5) is the intended way. Training is for new languages, large new datasets or new domains.
 >
 > Summarised from Kyutai's [training guide](https://github.com/kyutai-labs/pocket-tts/blob/main/training/README.md). **None of this has been run for this project.** It does not run in this app or on a standard Codespace.
