@@ -8,10 +8,10 @@ from errors import AppError
 
 def setup_ok(monkeypatch):
     store.init()
-    monkeypatch.setattr(tts, "profile_exists", lambda: True)
+    monkeypatch.setattr(tts, "profile_exists", lambda *a: True)
     monkeypatch.setattr(asr, "transcribe", lambda b: "what is the capital of France")
     monkeypatch.setattr(llm, "answer", lambda h, q, p=None: ("Paris.", {"prompt_tokens": 12, "completion_tokens": 2}))
-    monkeypatch.setattr(tts, "synthesize", lambda t: (b"RIFFfake", 1.5))
+    monkeypatch.setattr(tts, "synthesize", lambda t, **k: (b"RIFFfake", 1.5))
 
 
 def test_success_records_metrics_without_content(monkeypatch, wav):
@@ -50,7 +50,7 @@ def test_empty_typed_question(monkeypatch):
 
 def test_no_profile(monkeypatch, wav):
     store.init()
-    monkeypatch.setattr(tts, "profile_exists", lambda: False)
+    monkeypatch.setattr(tts, "profile_exists", lambda *a: False)
     r = pipeline.run_turn(wav(2.0), [])
     assert r.status == "failed" and r.error_category == "no_profile"
     assert store.query_requests(0)[0]["error_cat"] == "no_profile"
@@ -72,7 +72,7 @@ def test_empty_transcript(monkeypatch, wav):
 def test_stage_failure_keeps_earlier_timings(monkeypatch, wav):
     setup_ok(monkeypatch)
 
-    def boom(t):
+    def boom(t, **k):
         raise AppError("tts", "synthesis failed")
 
     monkeypatch.setattr(tts, "synthesize", boom)
@@ -86,3 +86,12 @@ def test_unexpected_exception_is_contained(monkeypatch, wav):
     setup_ok(monkeypatch)
     monkeypatch.setattr(llm, "answer", lambda *a, **k: 1 / 0)
     assert pipeline.run_turn(wav(2.0), []).error_category == "unknown"
+
+
+def test_chosen_voice_is_used(monkeypatch, wav):
+    setup_ok(monkeypatch)
+    seen = {}
+    monkeypatch.setattr(tts, "profile_exists", lambda name=None: seen.setdefault("checked", name) or True)
+    monkeypatch.setattr(tts, "synthesize", lambda t, profile=None: (seen.update(spoke=profile) or (b"RIFFfake", 1.0)))
+    assert pipeline.run_turn(wav(2.0), [], profile="studio").status == "success"
+    assert seen == {"checked": "studio", "spoke": "studio"}

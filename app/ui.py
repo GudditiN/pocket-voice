@@ -1,11 +1,11 @@
 """Shared page setup, theme CSS and small layout helpers."""
 from __future__ import annotations
 
-import hmac
 import html
 
 import streamlit as st
 
+import auth
 import monitor
 import store
 from config import get_settings
@@ -62,21 +62,53 @@ def flow(steps: list[str]) -> None:
     st.markdown(f"<div class='pv-flow'>{body}</div>", unsafe_allow_html=True)
 
 
+_throttle = auth.Throttle()
+
+
+def _password_form(label: str, key: str, accept: tuple[str, ...]) -> None:
+    """Ask for a password; on success remember the role and rerun. Wrong guesses are throttled."""
+    wait = _throttle.locked_for()
+    if wait:
+        st.error(f"Too many wrong passwords. Try again in {wait} s.")
+        return
+    with st.form(key):
+        entered = st.text_input(label, type="password")
+        submitted = st.form_submit_button("Unlock")
+    if submitted and entered:
+        role = auth.role_for(entered, get_settings())
+        if role in accept:
+            _throttle.success()
+            st.session_state["authed"] = True
+            st.session_state["admin"] = role == "admin"
+            st.rerun()
+        _throttle.failure()
+        st.error("Wrong password.")
+
+
+def voice_admin() -> bool:
+    """True if this visitor may manage voices; otherwise show the admin unlock form."""
+    if auth.can_manage_voices(get_settings(), st.session_state.get("admin", False)):
+        return True
+    with st.expander("🔒 Voice management is locked on the shared link"):
+        _password_form("Admin password", "admin_form", ("admin",))
+    return False
+
+
 def setup_page(title: str, icon: str) -> None:
     st.set_page_config(page_title=f"{title} · Pocket Voice", page_icon=icon, layout="wide")
     st.markdown(_CSS, unsafe_allow_html=True)
-    pw = get_settings().app_password
-    if pw and not st.session_state.get("authed"):
+    s = get_settings()
+    if s.exposed and not s.app_password:  # never serve a public link without a password
+        st.error("Public sharing is on but APP_PASSWORD is not set. Start the app with `./run.sh --expose`.")
+        st.stop()
+    if s.app_password and not st.session_state.get("authed"):
         hero("🎙️ Pocket Voice", "Enter the password to continue.")
-        entered = st.text_input("Password", type="password")
-        if entered and hmac.compare_digest(entered.encode(), pw.encode()):
-            st.session_state["authed"] = True
-            st.rerun()
-        elif entered:
-            st.error("Wrong password.")
+        _password_form("Password", "login_form", ("user", "admin"))
         st.stop()
     _boot()
     st.sidebar.markdown("<div class='pv-brand'>🎙️ Pocket Voice</div>", unsafe_allow_html=True)
     st.sidebar.caption("Speech is **AI-generated** in a voice profile made from a recording you provided.")
+    if s.exposed:
+        st.sidebar.warning("🌐 Shared through a public link" + (" · admin" if st.session_state.get("admin") else ""))
     if store.last_error():
         st.sidebar.warning("Analytics storage unavailable; live features still work.")

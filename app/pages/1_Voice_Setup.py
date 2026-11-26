@@ -1,4 +1,4 @@
-"""Create, test and delete the voice profile (reference-audio conditioning, not fine-tuning)."""
+"""Manage voice profiles: create, test, choose the default and delete (reference conditioning, not fine-tuning)."""
 import time
 from datetime import datetime
 
@@ -10,19 +10,59 @@ from audio import SILENCE_RMS, decode_to_wav, to_dbfs, wav_info
 from errors import AppError
 
 ui.setup_page("Voice Setup", "🎤")
-ui.hero("🎤 Voice setup", "Record or upload a short clip and PocketTTS builds a reusable voice profile.")
+ui.hero("🎤 Voices", "Keep several voice profiles, test them, and choose which one speaks.")
 ui.flow(["1 Record", "2 Build profile", "3 Test", "4 Use it"])
-st.caption("PocketTTS conditions on a short recording of your voice and saves a reusable *voice profile*. "
-           "This is not model training. The recording and profile stay on this machine, are never served by URL, "
-           "and are git-ignored.")
+st.caption("PocketTTS conditions on a short recording and saves a reusable *voice profile*. This is not model "
+           "training. Recordings and profiles stay on this machine, are never served by URL, and are git-ignored.")
 
-info = tts.profile_info()
-if info:
-    st.success(f"Voice profile configured (created {datetime.fromtimestamp(info['created']):%Y-%m-%d %H:%M}, "
-               f"{info['profile_kb']:.0f} KB).")
+ss = st.session_state
+if "flash" in ss:
+    st.success(ss.pop("flash"))
+
+manage = ui.voice_admin()
+profiles = tts.list_profiles()
+names = [p["name"] for p in profiles]
+active = tts.active_profile()
+
+# ---------------------------------------------------------------- your voices
+st.subheader("Your voices")
+if not profiles:
+    st.info("No voice profile yet." + (" Add one below." if manage else ""))
 else:
-    st.info("No voice profile yet.")
+    sentence = st.text_input("Test sentence", "Hello! This is an AI-generated voice based on my own recording.")
+    for p in profiles:
+        name = p["name"]
+        with st.container(border=True):
+            info_col, test_col, default_col, delete_col = st.columns([4, 1, 2, 1])
+            info_col.markdown(f"**{name}**" + ("  ·  ⭐ default" if name == active else ""))
+            info_col.caption(f"created {datetime.fromtimestamp(p['created']):%Y-%m-%d %H:%M} · {p['kb']:.0f} KB")
+            test = test_col.button("▶ Test", key=f"test_{name}")
+            if manage:
+                if default_col.button("⭐ Make default", key=f"default_{name}", disabled=name == active):
+                    tts.set_active(name)
+                    ss["flash"] = f"'{name}' is now the default voice."
+                    st.rerun()
+                with delete_col.popover("🗑"):
+                    st.write(f"Delete **{name}** and its recording? This cannot be undone.")
+                    if st.button("Yes, delete", key=f"delete_{name}", type="primary"):
+                        tts.delete_profile(name)
+                        ss["flash"] = f"Deleted '{name}'."
+                        st.rerun()
+            if test:
+                try:
+                    with st.spinner(f"Speaking in '{name}'…"):
+                        t = time.perf_counter()
+                        out, secs = tts.synthesize(sentence, profile=name)
+                        took = time.perf_counter() - t
+                    st.audio(out, format="audio/wav", autoplay=True)
+                    st.caption(f"{secs:.1f}s of audio in {took:.1f}s (real-time factor {took / secs:.2f}; lower is faster).")
+                except AppError as e:
+                    st.error(f"{e.message}  \n_Category: `{e.category}`_")
 
+if not manage:
+    st.stop()  # visitors on the shared link can listen, but not change voices
+
+# ---------------------------------------------------------------- add or replace
 PASSAGES = {
     "Everyday": "Good morning! I'm recording my own voice for a personal assistant. I'll speak clearly, at a natural "
                 "pace, as if I were explaining something to a friend. Whether it's the weather, a quick recipe, or "
@@ -35,7 +75,20 @@ PASSAGES = {
                       "remember, and how much fun it was.",
 }
 
-st.subheader("1. Record or upload your voice")
+st.subheader("Add or replace a voice")
+suggested = "default" if not names else next(f"voice-{i}" for i in range(2, len(names) + 3) if f"voice-{i}" not in names)
+raw_name = st.text_input("Voice name", suggested, help="Letters, numbers, - and _. Use an existing name to replace it.")
+try:
+    new_name = tts.slug(raw_name)
+except AppError as e:
+    new_name = None
+    st.error(e.message)
+if new_name in names:
+    st.warning(f"A voice called **{new_name}** exists and will be replaced.")
+elif new_name and new_name != raw_name:
+    st.caption(f"It will be saved as **{new_name}**.")
+make_default = st.checkbox("Make this the default voice", value=True)
+
 st.markdown("Use **your own voice** (or a voice you have explicit permission to use), in a quiet room.")
 consent = st.checkbox("This is my own voice, or I have explicit permission to use it.")
 
@@ -47,7 +100,7 @@ with st.container(border=True):
 st.caption(f"Click the mic, wait a second, read the passage at a natural pace (about 15–20 s), then click stop. "
            f"Minimum {tts.MIN_REF_S:.0f} s. Longer recordings are trimmed to the first {tts.USE_REF_S:.0f} s.")
 
-tab_rec, tab_up = st.tabs(["🎤 Record in browser", "⬆️ Upload a WAV"])
+tab_rec, tab_up = st.tabs(["🎤 Record in browser", "⬆️ Upload a file"])
 with tab_rec:
     recorded = st.audio_input("Record")
 with tab_up:
@@ -76,43 +129,22 @@ if wav:
                 "- Click the lock icon in the address bar, allow the microphone, and pick the right input device.\n"
                 "- Check the Mac input level in System Settings → Sound → Input.\n"
                 "- Or record in another app and use the **Upload** tab (WAV, MP3, FLAC or OGG).")
-        elif to_dbfs(SILENCE_RMS) < to_dbfs(rms) < -35:
+        elif to_dbfs(rms) < -35:
             st.warning("This recording is quiet. It will be boosted automatically, but also check your microphone "
                        "input volume and that the right microphone is selected.")
     except AppError as e:
         st.error(e.message)
 
-st.subheader("2. Build the profile")
-if st.button("Create / replace voice profile", type="primary", disabled=not (wav and consent)):
-    with st.spinner("Loading PocketTTS (first run downloads the model) and encoding your voice…"):
+if st.button("Create voice", type="primary", disabled=not (wav and consent and new_name)):
+    with st.spinner("Loading PocketTTS (first run downloads the model) and encoding the voice…"):
         t = time.perf_counter()
         try:
-            res = tts.build_profile(wav)
-            st.success(f"Profile saved in {time.perf_counter() - t:.1f}s "
-                       f"(voice encoding {res['voice_state_s']:.1f}s). Future requests reuse it without re-encoding.")
-            if res["trimmed"]:
-                st.info(f"Your {res['original_s']:.0f} s recording was trimmed to its first {res['duration_s']:.0f} s.")
+            res = tts.build_profile(wav, name=new_name, make_active=make_default)
+            note = (f" The {res['original_s']:.0f}s recording was trimmed to its first {res['duration_s']:.0f}s."
+                    if res["trimmed"] else "")
+            ss["flash"] = f"Voice '{res['name']}' saved in {time.perf_counter() - t:.1f}s.{note}"
+            st.rerun()
         except AppError as e:
             st.error(f"{e.message}  \n_Category: `{e.category}`_")
 if not consent and wav:
-    st.caption("Tick the consent box to enable profile creation.")
-
-st.subheader("3. Test the voice")
-sentence = st.text_input("Test sentence", "Hello! This is an AI-generated voice based on my own recording.")
-if st.button("Speak", disabled=not tts.profile_exists()):
-    try:
-        with st.spinner("Generating speech…"):
-            t = time.perf_counter()
-            out, secs = tts.synthesize(sentence)
-            took = time.perf_counter() - t
-        st.audio(out, format="audio/wav")
-        st.caption(f"Generated {secs:.1f}s of audio in {took:.1f}s (real-time factor {took / secs:.2f}; lower is faster).")
-    except AppError as e:
-        st.error(f"{e.message}  \n_Category: `{e.category}`_")
-if tts.last_timings:
-    st.caption("Last timings: " + " · ".join(f"{k.replace('_s', '').replace('_', ' ')} {v:.1f}s" for k, v in tts.last_timings.items()))
-
-st.subheader("Delete")
-if st.button("Delete voice profile and recording", disabled=not info):
-    tts.delete_profile()
-    st.rerun()
+    st.caption("Tick the consent box to enable voice creation.")

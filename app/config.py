@@ -68,6 +68,8 @@ class Settings:
     history_turns: int
     sample_interval_s: int
     app_password: str
+    admin_password: str  # on a public link, required to manage voices
+    exposed: bool  # set by `./run.sh --expose`
     quantize: bool  # int8 quantization of the TTS model (applied at load, so it needs an app restart)
 
     @property
@@ -117,5 +119,7 @@ def get_settings() -> Settings:
         history_turns=_int("HISTORY_TURNS", 6),
         sample_interval_s=max(1, _int("SAMPLE_INTERVAL_S", 5)),
         app_password=e("APP_PASSWORD", ""),
+        admin_password=e("ADMIN_PASSWORD", ""),
+        exposed=e("POCKET_EXPOSED", "0").lower() in ("1", "true", "yes"),
         quantize=e("POCKET_QUANTIZE", "0").lower() in ("1", "true", "yes"),
     )

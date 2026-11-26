@@ -23,7 +23,7 @@ with a live dashboard showing CPU, memory and latency.
 | [1. Aim](#-aim) | [6. Record a good sample](#step-1--record-a-good-sample) | [13. Settings](#-customize-the-app) |
 | [2. Architecture & data flow](#-architecture-and-data-flow) | [7. Clean the audio](#step-2--clean-the-audio) | [14. Size & data](#-size-resources-and-data) |
 | [3. About PocketTTS](#-about-pockettts) | [8. Create, compare, tune](#step-3--create-the-voice-profile) | [15. Dashboard](#-the-dashboard) |
-| [4. Quick start](#-quick-start-github-codespaces) | [9. Clear / delete](#step-6--clear-delete-or-reset-a-voice) | [16. Tests & benchmark](#-tests-and-benchmark) |
+| [4. Quick start](#-quick-start-github-codespaces) · [Share a link](#-share-a-public-link) | [9. Clear / delete](#step-6--clear-delete-or-reset-a-voice) | [16. Tests & benchmark](#-tests-and-benchmark) |
 | [5. Using the app](#-using-the-app) | [10. Enhance](#-enhance-the-result) | [17. Privacy](#-privacy-and-responsible-use) |
 | | [11. Train](#-train-or-fine-tune-advanced) | [18. Troubleshooting](#-troubleshooting) |
 | | [12. PocketTTS command line](#-use-pockettts-from-the-command-line) | [19. Licenses & sources](#-licenses-and-sources) |
@@ -72,7 +72,8 @@ with a live dashboard showing CPU, memory and latency.
 | File | Responsibility |
 |---|---|
 | [app/Home.py](app/Home.py) | Assistant page: mic or chat box → answer → audio |
-| [app/pages/1_Voice_Setup.py](app/pages/1_Voice_Setup.py) | Record/upload, create, test and delete a voice |
+| [app/pages/1_Voice_Setup.py](app/pages/1_Voice_Setup.py) | Manage voices: create, test, set default, delete |
+| [app/auth.py](app/auth.py), [scripts/expose.py](scripts/expose.py) | Passwords and permissions; public link for `--expose` |
 | [app/pages/2_Dashboard.py](app/pages/2_Dashboard.py) | System and voice analytics |
 | [app/pipeline.py](app/pipeline.py) | One turn: ASR → LLM → TTS, timing, error categories |
 | [app/tts.py](app/tts.py) | PocketTTS model, named voice profiles, tuning |
@@ -123,6 +124,7 @@ Repository → *Settings → Secrets and variables → Codespaces*:
 | `GROQ_API_KEY` | ✅ | Speech recognition and answers |
 | `HF_TOKEN` | ✅ | Download the voice-cloning weights |
 | `APP_PASSWORD` | optional | Password gate for the app |
+| `ADMIN_PASSWORD` | optional | Manage voices on a [public link](#-share-a-public-link) |
 
 Add them **before** creating the Codespace, or restart it afterwards. (Alternative: `cp .env.example .env` and fill it in.)
 
@@ -136,7 +138,7 @@ Add them **before** creating the Codespace, or restart it afterwards. (Alternati
 Open port **8501** from the **Ports** tab. Keep it **Private**.
 
 ### 6. First use
-**Voice Setup** → create your voice → **Speak** to test → **Assistant** → ask by mic or chat → **Dashboard**.
+**Voice Setup** → create your voice → **▶ Test** it → **Assistant** → ask by mic or chat → **Dashboard**.
 
 <details>
 <summary><b>Run locally (macOS / Linux, not yet tested)</b></summary>
@@ -160,12 +162,45 @@ docker run -e GROQ_API_KEY=... -e HF_TOKEN=... -p 8501:8501 -v pv-data:/data poc
 
 ---
 
+## 🌐 Share a public link
+
+By default the app is **private** (your machine or your Codespaces forwarded port). A public link is created **only** when you ask for it:
+
+```bash
+./run.sh --expose        # -expose also works
+```
+
+The terminal prints something like:
+```
+PUBLIC LINK: https://random-words.trycloudflare.com
+Password to share        : <generated>
+Admin password (keep it) : <generated>
+```
+Send people the link and the **password to share**. Press `Ctrl+C` to close the link. Stop any running `./run.sh` first.
+
+| On the public link | Visitor password | Admin password |
+|---|---|---|
+| Ask by voice or text, choose a voice, hear answers, see the dashboard | ✅ | ✅ |
+| Test a saved voice | ✅ | ✅ |
+| Edit the system prompt | ❌ | ✅ |
+| Create, replace, delete or set the default voice | ❌ | ✅ (unlock on the Voice Setup page) |
+
+- **How it works:** a free [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/), no account needed. The first time, the script downloads `cloudflared` (pinned version, 20–40 MB, SHA-256 verified) into `.cache/bin/`, unless it is already installed.
+- **Your own passwords:** set `APP_PASSWORD` and `ADMIN_PASSWORD` (different, at least 12 characters). Otherwise new ones are generated on every start.
+- **Temporary:** the address changes each time and works only while the command runs. Quick tunnels are meant for testing, without an uptime guarantee.
+- **Microphone:** the link is HTTPS, so visitors' browsers can record.
+- **Wrong passwords:** after several failures, password entry is locked for a minute for everyone.
+
+> ⚠️ **Anyone with the password can make your cloned voice say what they like** (by asking the assistant to repeat it) and use your Groq quota. Share only with people you trust, never publish the password, and close the link when you are done. Voice cloning or impersonation without consent is [prohibited](https://github.com/kyutai-labs/pocket-tts#prohibited-use).
+
+---
+
 ## 🧭 Using the app
 
 | Page | What to do |
 |---|---|
-| **Voice Setup** | Pick a reading passage, tick consent, record in the browser or upload a file, check the level line, click **Create / replace voice profile**, then **Speak** a test sentence. |
-| **Assistant** | Click the mic (click again to stop) **or** type in the chat box. Watch the stage status, read the answer and hear it. Edit the system prompt or clear the conversation in the sidebar. |
+| **Voice Setup** | See your voices: **▶ Test**, **⭐ Make default** or **🗑 delete** each one. To add one: name it, pick a reading passage, tick consent, record or upload, click **Create voice**. |
+| **Assistant** | Choose **Answer in this voice**, then click the mic (click again to stop) **or** type in the chat box. Each answer shows which voice spoke it. Edit the system prompt or clear the conversation in the sidebar. |
 | **Dashboard** | Choose 15 min, 1 hour or 24 hours. **System** shows resources; **Voice & usage** shows latency, requests and errors. |
 
 🎤 **Microphone silent?** Open the app in a normal browser tab (not VS Code's preview), allow the mic, pick the right input device, or upload a file instead. Connecting desktop VS Code to the Codespace and opening `http://localhost:8501` is another option.
@@ -211,10 +246,13 @@ afconvert -f WAVE -d LEI16@16000 -c 1 in.m4a my_voice.wav
 
 ## Step 3 · Create the voice profile
 
-**In the app:** Voice Setup → tick consent → record or upload → **Create / replace voice profile**.
-This builds (or replaces) the profile called `default` and makes it active.
+**In the app:** Voice Setup → *Add or replace a voice* → enter a **name** (for example `me-calm`, `me-energetic`) → tick consent → record or upload → **Create voice**.
 
-**Extra named profiles** (to compare recordings). There is no button for this yet, so run from the project folder:
+- Keep as many voices as you like. Using an existing name replaces that voice.
+- **Make this the default voice** (or **⭐ Make default** later) sets the voice used unless someone picks another.
+- On the **Assistant** page, **Answer in this voice** chooses the voice for your session only.
+
+**From the command line** (optional), run from the project folder:
 ```bash
 uv run python - <<'EOF'
 import sys; sys.path.insert(0, "app")
@@ -271,9 +309,9 @@ Settings you leave out of `save_tuning` return to their defaults. They are store
 
 | What you want | How |
 |---|---|
-| Replace your voice | Create a new profile in Voice Setup |
-| Delete the **active** voice | Voice Setup → **Delete voice profile and recording** |
-| Delete a **named** voice | `uv run python -c 'import sys; sys.path.insert(0,"app"); import tts; tts.delete_profile("studio")'` |
+| Replace a voice | Voice Setup → create a voice with the **same name** |
+| Delete a voice | Voice Setup → **🗑** next to it → **Yes, delete** |
+| Delete from the command line | `uv run python -c 'import sys; sys.path.insert(0,"app"); import tts; tts.delete_profile("studio")'` |
 | Clear the **chat** | Assistant sidebar → **Clear conversation** |
 | Delete **all voices and tuning** | `rm -rf data/voice` ⚠️ permanent |
 | Delete **analytics** | stop the app, then `rm data/metrics.db*` ⚠️ permanent |
@@ -418,7 +456,9 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | `DATA_DIR` | `./data` | Voices and database location |
 | `RETENTION_DAYS` | `14` | Age limit for samples and errors |
 | `SAMPLE_INTERVAL_S` | `5` | Monitoring interval |
-| `APP_PASSWORD` | empty | Require a password |
+| `APP_PASSWORD` | empty | Require a password (generated for `--expose` if empty) |
+| `ADMIN_PASSWORD` | empty | Manage voices on a public link (generated for `--expose` if empty) |
+| `PORT` | `8501` | Port used by `run.sh` (shell variable) |
 
 | Code change | Edit |
 |---|---|
@@ -513,6 +553,7 @@ The benchmark saves `data/benchmark.json`.
 - Voice files are stored with owner-only permissions and are never served by URL.
 - Your question audio or text and recent chat history are sent to Groq ([privacy policy](https://groq.com/privacy-policy/)). Your voice sample and profile are not.
 - Keep the Codespaces port **Private**; consider `APP_PASSWORD`.
+- A public link exists only with `./run.sh --expose` and always requires a password: see [Share a public link](#-share-a-public-link).
 - **Prohibited by Kyutai:** cloning or impersonating a voice without explicit lawful consent; deception or disinformation, including presenting generated audio as real; unlawful, harmful or abusive content. See [Prohibited use](https://github.com/kyutai-labs/pocket-tts#prohibited-use).
 
 ---
@@ -538,7 +579,8 @@ The benchmark saves `data/benchmark.json`.
 ## ⚠️ Known limitations
 
 - Needs internet for Groq, and is subject to its rate limits.
-- Named profiles and tuning have **no UI yet** (use the commands above).
+- Voice tuning has **no UI yet** (use the commands in Step 5).
+- Public links are temporary testing tunnels with shared passwords (no individual user accounts).
 - Speech is generated in full before playback (no streaming); one request at a time.
 - No background-noise removal, voice-activity detection or M4A support.
 - English model only unless you edit the code. **Telugu and other languages:** see [Next phases](docs/NEXT_PHASES.md).

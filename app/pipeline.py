@@ -33,14 +33,18 @@ MAX_QUESTION_CHARS = 1000
 
 
 def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str | None = None,
-             on_status: Callable[[str], None] = lambda s: None, text: str | None = None) -> TurnResult:
-    """One turn. Pass a recording (audio_bytes), or typed text to skip speech recognition."""
+             on_status: Callable[[str], None] = lambda s: None, text: str | None = None,
+             profile: str | None = None) -> TurnResult:
+    """One turn. Pass a recording (audio_bytes), or typed text to skip speech recognition.
+
+    profile: name of the voice that speaks the answer (default: the active one).
+    """
     s = get_settings()
     r = TurnResult(request_id=uuid.uuid4().hex[:12])
     t0, ts = time.perf_counter(), time.time()
     usage: dict = {}
     try:
-        if not tts.profile_exists():
+        if not tts.profile_exists(profile):
             raise AppError("no_profile", "No voice profile yet. Create one on the Voice Setup page.")
         if text is not None:  # typed question: no speech recognition
             r.question = text.strip()[:MAX_QUESTION_CHARS]
@@ -66,7 +70,7 @@ def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str 
 
         on_status("Generating speech")
         t = time.perf_counter()
-        r.audio_wav, r.out_audio_s = tts.synthesize(r.answer)
+        r.audio_wav, r.out_audio_s = tts.synthesize(r.answer, profile=profile)
         r.timings_ms["tts"] = (time.perf_counter() - t) * 1000
         r.status = "success"
         on_status("Completed")

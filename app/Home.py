@@ -3,6 +3,7 @@ import hashlib
 
 import streamlit as st
 
+import auth
 import pipeline
 import tts
 import ui
@@ -25,14 +26,23 @@ ss.setdefault("turns", [])  # display records incl. audio bytes
 ss.setdefault("last_audio", None)
 ss.setdefault("prompt", s.system_prompt)
 
+voices = [p["name"] for p in tts.list_profiles()]
+voice = None
+if voices:
+    # Each visitor picks a voice for their own session; it does not change the default for others.
+    preferred = ss.get("chosen_voice") if ss.get("chosen_voice") in voices else tts.active_profile()
+    voice = st.selectbox("🔊 Answer in this voice", voices, index=voices.index(preferred))
+    ss["chosen_voice"] = voice
+
 with st.sidebar:
     st.subheader("Settings")
-    ss["prompt"] = st.text_area("System prompt", ss["prompt"], height=140)
+    if auth.can_manage_voices(s, ss.get("admin", False)):  # visitors on a public link keep the default prompt
+        ss["prompt"] = st.text_area("System prompt", ss["prompt"], height=140)
     if st.button("Clear conversation"):
         ss["history"], ss["turns"], ss["last_audio"] = [], [], None
         st.rerun()
 
-if not tts.profile_exists():
+if not voices:
     st.warning("No voice profile yet. Create one on the **Voice Setup** page first.")
 if not s.groq_api_key:
     st.error("GROQ_API_KEY is not set. Add it as an environment variable or Codespaces secret, then restart.")
@@ -42,7 +52,7 @@ def process(audio_bytes=None, text=None):
     """Run one turn with a live status box, then record it in the conversation."""
     with st.status("Processing…", expanded=True) as status:
         result = pipeline.run_turn(
-            audio_bytes, ss["history"], ss["prompt"], text=text,
+            audio_bytes, ss["history"], ss["prompt"], text=text, profile=voice,
             on_status=lambda label: status.update(label=label + ("…" if label not in ("Completed", "Failed") else "")),
         )
         if result.status == "success":
@@ -56,7 +66,8 @@ def process(audio_bytes=None, text=None):
     if result.status == "success":
         ss["history"] += [{"role": "user", "content": result.question},
                           {"role": "assistant", "content": result.answer}]
-        ss["turns"].append({"q": result.question, "a": result.answer, "wav": result.audio_wav, "fresh": True})
+        ss["turns"].append({"q": result.question, "a": result.answer, "wav": result.audio_wav, "voice": voice,
+                            "fresh": True})
     else:
         st.error(f"{result.error_message}  \n_Category: `{result.error_category}`_")
 
@@ -80,5 +91,6 @@ for i, turn in enumerate(ss["turns"]):
         st.write(turn["a"])
         newest = i == len(ss["turns"]) - 1
         st.audio(turn["wav"], format="audio/wav", autoplay=bool(turn.pop("fresh", False)) and newest)
+        st.caption(f"AI-generated voice: {turn['voice']}")
 if not ss["turns"]:
     st.info("Status: **Ready**. Your conversation will appear here.")
