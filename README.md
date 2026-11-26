@@ -71,7 +71,7 @@ with a live dashboard showing CPU, memory and latency.
 
 | File | Responsibility |
 |---|---|
-| [app/Home.py](app/Home.py) | Assistant page: mic or chat box → answer → audio |
+| [app/Home.py](app/Home.py), [app/chat_style.py](app/chat_style.py) | Assistant page: one chat box with a mic → answer → audio; its look |
 | [app/pages/1_Voice_Setup.py](app/pages/1_Voice_Setup.py) | Manage voices: create, test, set default, delete |
 | [app/auth.py](app/auth.py), [scripts/expose.py](scripts/expose.py) | Passwords and permissions; public link for `--expose` |
 | [app/pages/2_Dashboard.py](app/pages/2_Dashboard.py) | System and voice analytics |
@@ -200,7 +200,7 @@ Send people the link and the **password to share**. Press `Ctrl+C` to close the 
 | Page | What to do |
 |---|---|
 | **Voice Setup** | See your voices: **▶ Test**, **⭐ Make default** or **🗑 delete** each one. To add one: name it, pick a reading passage, tick consent, record or upload, click **Create voice**. |
-| **Assistant** | Choose **Answer in this voice**, then click the mic (click again to stop) **or** type in the chat box. Each answer shows which voice spoke it. Edit the system prompt or clear the conversation in the sidebar. |
+| **Assistant** | Choose **Answer in this voice**. Type in the chat box at the bottom, **or** tap the mic on its right: a *Listening* banner appears, tap **✓** to send or **✕** to cancel. Each answer shows which voice spoke it. Edit the system prompt or clear the conversation in the sidebar. |
 | **Dashboard** | Choose 15 min, 1 hour or 24 hours. **System** shows resources; **Voice & usage** shows latency, requests and errors. |
 
 🎤 **Microphone silent?** Open the app in a normal browser tab (not VS Code's preview), allow the mic, pick the right input device, or upload a file instead. Connecting desktop VS Code to the Codespace and opening `http://localhost:8501` is another option.
@@ -486,6 +486,7 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | Silence level and boost target | `SILENCE_RMS`, `TARGET_DBFS` in [app/audio.py](app/audio.py) |
 | Answer length and creativity | `max_completion_tokens`, `temperature` in [app/llm.py](app/llm.py) |
 | Reading passages | `PASSAGES` in [app/pages/1_Voice_Setup.py](app/pages/1_Voice_Setup.py) |
+| Microphone button size (52 px) and the *Listening* animation | `MIC_SIZE_PX` and the CSS in [app/chat_style.py](app/chat_style.py) |
 | Colours and theme | [.streamlit/config.toml](.streamlit/config.toml), `_CSS` in [app/ui.py](app/ui.py) |
 | Dashboard ranges and chart colours | `RANGES`, `C` in [app/pages/2_Dashboard.py](app/pages/2_Dashboard.py) |
 

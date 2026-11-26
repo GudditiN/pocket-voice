@@ -66,6 +66,27 @@ def test_assistant_lets_you_choose_a_voice():
     assert at.selectbox[0].value == "alpha" and tts.active_profile() == "beta"  # session only
 
 
+def test_typed_message_is_answered_in_the_chosen_voice(monkeypatch):
+    import pipeline
+
+    seen = {}
+
+    def fake_turn(audio, history, prompt, **kw):
+        seen.update(audio=audio, text=kw["text"], voice=kw["profile"])
+        return pipeline.TurnResult("id1", status="success", question=kw["text"], answer="Paris.",
+                                   audio_wav=b"RIFFfake", timings_ms={"llm": 100, "tts": 200, "total": 300})
+
+    monkeypatch.setattr(pipeline, "run_turn", fake_turn)
+    add_voice("alpha")
+    at = page(HOME)
+    assert len(at.chat_input) == 1
+    at.chat_input[0].set_value("Capital of France?").run()
+    assert not at.exception, at.exception
+    assert seen == {"audio": None, "text": "Capital of France?", "voice": "alpha"}
+    assert [m.name for m in at.chat_message] == ["user", "assistant"]
+    assert at.session_state["turns"][0]["a"] == "Paris."
+
+
 def test_assistant_without_voices_warns():
     at = page(HOME)
     assert not at.selectbox and any("No voice profile yet" in w.value for w in at.warning)
