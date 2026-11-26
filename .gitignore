@@ -11,6 +11,10 @@ data/
 *.db-wal
 *.db-shm
 
+# Downloaded or trained models (hundreds of MB)
+models/
+runs/
+
 # Python
 .venv/
 __pycache__/

@@ -1,0 +1,261 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1140" viewBox="0 0 1600 1140" font-family="Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+<title id="t">Pocket Voice cloud architecture and data flow</title>
+<desc id="d">The browser talks over HTTPS to one Python process in a GitHub Codespace. The process calls Groq for speech recognition and answers, speaks with PocketTTS on CPU using a locally saved voice profile, and stores metrics in SQLite. Model weights are downloaded once from Hugging Face.</desc>
+<rect x="0" y="0" width="1600" height="1140" rx="0" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1.5"/>
+<text x="40" y="46" font-size="28" fill="#111827" text-anchor="start" font-weight="bold">Pocket Voice: cloud architecture and data flow</text>
+<text x="40" y="74" font-size="16" fill="#4B5563" text-anchor="start">Ask by voice or text, get the answer spoken in your own voice</text>
+<rect x="30" y="100" width="290" height="790" rx="18" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="175" y="126" font-size="15" fill="#4B5563" text-anchor="middle" font-weight="bold">YOUR BROWSER</text>
+<rect x="385" y="100" width="800" height="790" rx="18" fill="#EEF2FF" stroke="#6366F1" stroke-width="2"/>
+<text x="785" y="126" font-size="15" fill="#3730A3" text-anchor="middle" font-weight="bold">GITHUB CODESPACE (cloud VM)  ·  one Python process  ·  private HTTPS port 8501</text>
+<rect x="1245" y="100" width="325" height="790" rx="18" fill="#F0FDFA" stroke="#14B8A6" stroke-width="2" stroke-dasharray="8 6"/>
+<text x="1407" y="126" font-size="15" fill="#0F766E" text-anchor="middle" font-weight="bold">EXTERNAL CLOUD SERVICES</text>
+<rect x="55" y="180" width="240" height="95" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="175.0" y="211.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Voice Setup</text>
+<text x="175.0" y="232.5" font-size="13.5" fill="#4B5563" text-anchor="middle">record or upload</text>
+<text x="175.0" y="250.5" font-size="13.5" fill="#4B5563" text-anchor="middle">WAV · MP3 · FLAC · OGG</text>
+<rect x="55" y="360" width="240" height="95" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="175.0" y="391.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Ask a question</text>
+<text x="175.0" y="412.5" font-size="13.5" fill="#4B5563" text-anchor="middle">microphone (WAV)</text>
+<text x="175.0" y="430.5" font-size="13.5" fill="#4B5563" text-anchor="middle">or typed text</text>
+<rect x="55" y="510" width="240" height="95" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="175.0" y="541.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Hear the answer</text>
+<text x="175.0" y="562.5" font-size="13.5" fill="#4B5563" text-anchor="middle">transcript, reply</text>
+<text x="175.0" y="580.5" font-size="13.5" fill="#4B5563" text-anchor="middle">and audio player</text>
+<rect x="55" y="720" width="240" height="95" rx="10" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="175.0" y="751.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Dashboard</text>
+<text x="175.0" y="772.5" font-size="13.5" fill="#4B5563" text-anchor="middle">live tiles</text>
+<text x="175.0" y="790.5" font-size="13.5" fill="#4B5563" text-anchor="middle">and history charts</text>
+<rect x="415" y="180" width="155" height="470" rx="10" fill="#FFFFFF" stroke="#6366F1" stroke-width="2"/>
+<text x="492.5" y="389.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Streamlit UI</text>
+<text x="492.5" y="410.5" font-size="13.5" fill="#4B5563" text-anchor="middle">Assistant</text>
+<text x="492.5" y="428.5" font-size="13.5" fill="#4B5563" text-anchor="middle">Voice Setup</text>
+<text x="492.5" y="446.5" font-size="13.5" fill="#4B5563" text-anchor="middle">Dashboard</text>
+<rect x="640" y="185" width="210" height="90" rx="10" fill="#F0FDFA" stroke="#0D9488" stroke-width="2"/>
+<text x="745.0" y="214.0" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Voice profiles</text>
+<text x="745.0" y="235.0" font-size="13.5" fill="#4B5563" text-anchor="middle">data/voice/profiles/</text>
+<text x="745.0" y="253.0" font-size="13.5" fill="#4B5563" text-anchor="middle">private · git-ignored</text>
+<rect x="925" y="180" width="230" height="100" rx="10" fill="#CCFBF1" stroke="#0D9488" stroke-width="2.5"/>
+<text x="1040.0" y="214.0" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">PocketTTS</text>
+<text x="1040.0" y="235.0" font-size="13.5" fill="#4B5563" text-anchor="middle">tts.py · runs on CPU</text>
+<text x="1040.0" y="253.0" font-size="13.5" fill="#4B5563" text-anchor="middle">one request at a time</text>
+<rect x="640" y="345" width="210" height="265" rx="10" fill="#FFFFFF" stroke="#4F46E5" stroke-width="2.5"/>
+<text x="745.0" y="442.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Pipeline</text>
+<text x="745.0" y="463.5" font-size="13.5" fill="#4B5563" text-anchor="middle">pipeline.py</text>
+<text x="745.0" y="481.5" font-size="13.5" fill="#4B5563" text-anchor="middle">runs each stage,</text>
+<text x="745.0" y="499.5" font-size="13.5" fill="#4B5563" text-anchor="middle">times it, and</text>
+<text x="745.0" y="517.5" font-size="13.5" fill="#4B5563" text-anchor="middle">maps errors</text>
+<rect x="925" y="345" width="230" height="80" rx="10" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+<text x="1040.0" y="378.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Speech-to-text client</text>
+<text x="1040.0" y="399.5" font-size="13.5" fill="#4B5563" text-anchor="middle">asr.py</text>
+<rect x="925" y="450" width="230" height="80" rx="10" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
+<text x="1040.0" y="483.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Answer client</text>
+<text x="1040.0" y="504.5" font-size="13.5" fill="#4B5563" text-anchor="middle">llm.py · adds chat history</text>
+<rect x="415" y="730" width="155" height="100" rx="10" fill="#FFFBEB" stroke="#D97706" stroke-width="2"/>
+<text x="492.5" y="764.0" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Monitor</text>
+<text x="492.5" y="785.0" font-size="13.5" fill="#4B5563" text-anchor="middle">monitor.py</text>
+<text x="492.5" y="803.0" font-size="13.5" fill="#4B5563" text-anchor="middle">psutil, every 5 s</text>
+<rect x="640" y="730" width="210" height="100" rx="10" fill="#FFFBEB" stroke="#D97706" stroke-width="2"/>
+<text x="745.0" y="764.0" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">SQLite</text>
+<text x="745.0" y="785.0" font-size="13.5" fill="#4B5563" text-anchor="middle">data/metrics.db</text>
+<text x="745.0" y="803.0" font-size="13.5" fill="#4B5563" text-anchor="middle">metrics only</text>
+<rect x="925" y="600" width="230" height="80" rx="10" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+<text x="1040.0" y="624.0" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Secrets</text>
+<text x="1040.0" y="645.0" font-size="13.5" fill="#4B5563" text-anchor="middle">env / .env, server-side</text>
+<text x="1040.0" y="663.0" font-size="13.5" fill="#4B5563" text-anchor="middle">GROQ_API_KEY · HF_TOKEN</text>
+<rect x="925" y="730" width="230" height="100" rx="10" fill="#F8FAFC" stroke="#64748B" stroke-width="1.5"/>
+<text x="1040.0" y="764.0" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Model cache</text>
+<text x="1040.0" y="785.0" font-size="13.5" fill="#4B5563" text-anchor="middle">.cache/huggingface</text>
+<text x="1040.0" y="803.0" font-size="13.5" fill="#4B5563" text-anchor="middle">weights kept between runs</text>
+<rect x="1275" y="180" width="265" height="100" rx="10" fill="#FFFFFF" stroke="#64748B" stroke-width="1.5"/>
+<text x="1407.5" y="214.0" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Hugging Face</text>
+<text x="1407.5" y="235.0" font-size="13.5" fill="#4B5563" text-anchor="middle">PocketTTS weights</text>
+<text x="1407.5" y="253.0" font-size="13.5" fill="#4B5563" text-anchor="middle">gated: accept terms + token</text>
+<rect x="1275" y="345" width="265" height="80" rx="10" fill="#FFFFFF" stroke="#14B8A6" stroke-width="2"/>
+<text x="1407.5" y="378.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Groq Whisper</text>
+<text x="1407.5" y="399.5" font-size="13.5" fill="#4B5563" text-anchor="middle">speech → text</text>
+<rect x="1275" y="450" width="265" height="80" rx="10" fill="#FFFFFF" stroke="#14B8A6" stroke-width="2"/>
+<text x="1407.5" y="483.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Groq chat model</text>
+<text x="1407.5" y="504.5" font-size="13.5" fill="#4B5563" text-anchor="middle">question → answer</text>
+<path d="M 295 215 L 415 215" fill="none" stroke="#0D9488" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="415,215 402.0,222.0 402.0,208.0" fill="#0D9488"/>
+<circle cx="352" cy="215" r="14" fill="#0D9488" stroke="#FFFFFF" stroke-width="2"/>
+<text x="352" y="220" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">A</text>
+<path d="M 492 180 L 492 155 L 1040 155 L 1040 180" fill="none" stroke="#0D9488" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="1040,180 1033.0,167.0 1047.0,167.0" fill="#0D9488"/>
+<circle cx="750" cy="155" r="14" fill="#0D9488" stroke="#FFFFFF" stroke-width="2"/>
+<text x="750" y="160" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">A</text>
+<path d="M 925 230 L 850 230" fill="none" stroke="#0D9488" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="850,230 863.0,223.0 863.0,237.0" fill="#0D9488"/>
+<polygon points="925,230 912.0,237.0 912.0,223.0" fill="#0D9488"/>
+<circle cx="888" cy="230" r="14" fill="#0D9488" stroke="#FFFFFF" stroke-width="2"/>
+<text x="888" y="235" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">B</text>
+<path d="M 295 400 L 415 400" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="415,400 402.0,407.0 402.0,393.0" fill="#4F46E5"/>
+<circle cx="352" cy="400" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="352" y="405" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">1</text>
+<path d="M 570 400 L 640 400" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="640,400 627.0,407.0 627.0,393.0" fill="#4F46E5"/>
+<circle cx="603" cy="400" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="603" y="405" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">1</text>
+<path d="M 850 385 L 925 385" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="925,385 912.0,392.0 912.0,378.0" fill="#4F46E5"/>
+<polygon points="850,385 863.0,378.0 863.0,392.0" fill="#4F46E5"/>
+<circle cx="888" cy="385" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="888" y="390" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">2</text>
+<path d="M 1155 385 L 1275 385" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="1275,385 1262.0,392.0 1262.0,378.0" fill="#4F46E5"/>
+<polygon points="1155,385 1168.0,378.0 1168.0,392.0" fill="#4F46E5"/>
+<circle cx="1215" cy="385" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="1215" y="390" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">2</text>
+<path d="M 850 490 L 925 490" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="925,490 912.0,497.0 912.0,483.0" fill="#4F46E5"/>
+<polygon points="850,490 863.0,483.0 863.0,497.0" fill="#4F46E5"/>
+<circle cx="888" cy="490" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="888" y="495" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">3</text>
+<path d="M 1155 490 L 1275 490" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="1275,490 1262.0,497.0 1262.0,483.0" fill="#4F46E5"/>
+<polygon points="1155,490 1168.0,483.0 1168.0,497.0" fill="#4F46E5"/>
+<circle cx="1215" cy="490" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="1215" y="495" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">3</text>
+<path d="M 745 345 L 745 312 L 975 312 L 975 280" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="975,280 982.0,293.0 968.0,293.0" fill="#4F46E5"/>
+<polygon points="745,345 738.0,332.0 752.0,332.0" fill="#4F46E5"/>
+<circle cx="860" cy="312" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="860" y="317" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">4</text>
+<path d="M 640 550 L 570 550" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="570,550 583.0,543.0 583.0,557.0" fill="#4F46E5"/>
+<circle cx="605" cy="550" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="605" y="555" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">5</text>
+<path d="M 415 550 L 295 550" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="295,550 308.0,543.0 308.0,557.0" fill="#4F46E5"/>
+<circle cx="352" cy="550" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="352" y="555" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">5</text>
+<path d="M 800 610 L 800 730" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="800,730 793.0,717.0 807.0,717.0" fill="#4F46E5"/>
+<circle cx="800" cy="670" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="800" y="675" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">6</text>
+<path d="M 492 730 L 492 650" fill="none" stroke="#D97706" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="492,650 499.0,663.0 485.0,663.0" fill="#D97706"/>
+<circle cx="492" cy="690" r="14" fill="#D97706" stroke="#FFFFFF" stroke-width="2"/>
+<text x="492" y="695" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">M</text>
+<path d="M 570 780 L 640 780" fill="none" stroke="#D97706" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="640,780 627.0,787.0 627.0,773.0" fill="#D97706"/>
+<circle cx="605" cy="780" r="14" fill="#D97706" stroke="#FFFFFF" stroke-width="2"/>
+<text x="605" y="785" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">M</text>
+<path d="M 690 730 L 690 630 L 570 630" fill="none" stroke="#D97706" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="570,630 583.0,623.0 583.0,637.0" fill="#D97706"/>
+<circle cx="690" cy="680" r="14" fill="#D97706" stroke="#FFFFFF" stroke-width="2"/>
+<text x="690" y="685" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">H</text>
+<path d="M 415 625 L 355 625 L 355 765 L 295 765" fill="none" stroke="#D97706" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="295,765 308.0,758.0 308.0,772.0" fill="#D97706"/>
+<circle cx="355" cy="695" r="14" fill="#D97706" stroke="#FFFFFF" stroke-width="2"/>
+<text x="355" y="700" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">M</text>
+<path d="M 1275 215 L 1155 215" fill="none" stroke="#64748B" stroke-width="2.6" stroke-linejoin="round" stroke-dasharray="7 6"/>
+<polygon points="1155,215 1168.0,208.0 1168.0,222.0" fill="#64748B"/>
+<circle cx="1215" cy="215" r="14" fill="#64748B" stroke="#FFFFFF" stroke-width="2"/>
+<text x="1215" y="220" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">D</text>
+<rect x="30" y="910" width="1540" height="205" rx="14" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<text x="55" y="940" font-size="17" fill="#4F46E5" text-anchor="start" font-weight="bold">Each question</text>
+<circle cx="69" cy="963" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="69" y="968" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">1</text>
+<text x="93" y="968" font-size="14" fill="#111827" text-anchor="start">Mic audio (WAV) or typed text reaches the pipeline</text>
+<circle cx="69" cy="989" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="69" y="994" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">2</text>
+<text x="93" y="994" font-size="14" fill="#111827" text-anchor="start">Audio → Groq Whisper → text (skipped when typed)</text>
+<circle cx="69" cy="1015" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="69" y="1020" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">3</text>
+<text x="93" y="1020" font-size="14" fill="#111827" text-anchor="start">Question + recent history → Groq chat → answer</text>
+<circle cx="69" cy="1041" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="69" y="1046" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">4</text>
+<text x="93" y="1046" font-size="14" fill="#111827" text-anchor="start">Answer text → PocketTTS → speech in your voice</text>
+<circle cx="69" cy="1067" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="69" y="1072" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">5</text>
+<text x="93" y="1072" font-size="14" fill="#111827" text-anchor="start">Text and audio are returned and played</text>
+<circle cx="69" cy="1093" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="69" y="1098" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">6</text>
+<text x="93" y="1098" font-size="14" fill="#111827" text-anchor="start">One metrics row saved: no audio, no transcript</text>
+<text x="575" y="940" font-size="17" fill="#0D9488" text-anchor="start" font-weight="bold">Voice setup (once per profile)</text>
+<circle cx="589" cy="963" r="14" fill="#0D9488" stroke="#FFFFFF" stroke-width="2"/>
+<text x="589" y="968" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">A</text>
+<text x="613" y="968" font-size="14" fill="#111827" text-anchor="start">Your recording goes to PocketTTS (trimmed to 20 s)</text>
+<circle cx="589" cy="989" r="14" fill="#0D9488" stroke="#FFFFFF" stroke-width="2"/>
+<text x="589" y="994" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">B</text>
+<text x="613" y="994" font-size="14" fill="#111827" text-anchor="start">Saved once as a profile, reused for every answer</text>
+<text x="1055" y="940" font-size="17" fill="#D97706" text-anchor="start" font-weight="bold">Monitoring and downloads</text>
+<circle cx="1069" cy="963" r="14" fill="#D97706" stroke="#FFFFFF" stroke-width="2"/>
+<text x="1069" y="968" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">M</text>
+<text x="1093" y="968" font-size="14" fill="#111827" text-anchor="start">psutil samples: live to the UI, to SQLite every 30 s</text>
+<circle cx="1069" cy="989" r="14" fill="#D97706" stroke="#FFFFFF" stroke-width="2"/>
+<text x="1069" y="994" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">H</text>
+<text x="1093" y="994" font-size="14" fill="#111827" text-anchor="start">History charts are read from SQLite</text>
+<circle cx="1069" cy="1015" r="14" fill="#64748B" stroke="#FFFFFF" stroke-width="2"/>
+<text x="1069" y="1020" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">D</text>
+<text x="1093" y="1020" font-size="14" fill="#111827" text-anchor="start">Weights downloaded on first use, then cached</text>
+<text x="575" y="1040" font-size="14" fill="#111827" text-anchor="start" font-weight="bold">Sent to Groq: question audio or text, plus recent chat history.</text>
+<text x="575" y="1062" font-size="14" fill="#111827" text-anchor="start">Your voice recording and profile are not sent to Groq.</text>
+<circle cx="62" cy="121" r="15" fill="#475569" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(52.25 111.25) scale(0.812)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.500 3 14.500 0 18M12 3c-3 3.500-3 14.500 0 18"/></g>
+<circle cx="408" cy="121" r="15" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(398.25 111.25) scale(0.812)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="7" rx="1.5"/><rect x="4" y="13" width="16" height="7" rx="1.5"/><path d="M8 7.5h.01M8 16.5h.01M12 7.5h5M12 16.5h5"/></g>
+<circle cx="1270" cy="121" r="15" fill="#0F766E" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(1260.25 111.25) scale(0.812)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 10a4 4 0 0 1-.5 8z"/></g>
+<circle cx="59" cy="184" r="17" fill="#0D9488" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(47.95 172.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5M7 10l5-5 5 5M5 20h14"/></g>
+<circle cx="59" cy="364" r="17" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(47.95 352.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0M12 17v4M8 21h8"/></g>
+<circle cx="59" cy="514" r="17" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(47.95 502.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h4l5-4v14l-5-4H3zM15 9a4 4 0 0 1 0 6M17.5 6.5a8 8 0 0 1 0 11"/></g>
+<circle cx="59" cy="724" r="17" fill="#D97706" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(47.95 712.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16M8 16v-4M12.5 16V8M17 16v-6"/></g>
+<circle cx="419" cy="184" r="17" fill="#6366F1" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(407.95 172.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></g>
+<circle cx="644" cy="189" r="17" fill="#0D9488" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(632.95 177.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3M12 15v2"/></g>
+<circle cx="929" cy="184" r="17" fill="#0D9488" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(917.95 172.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2M7.5 8v8M12 3.5v17M16.5 7v10M21 10v4"/></g>
+<circle cx="644" cy="349" r="17" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(632.95 337.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="5.5" r="2.5"/><circle cx="19" cy="18.5" r="2.5"/><path d="M7.5 12h5l4.5-5M12.5 12l4.5 5"/></g>
+<circle cx="929" cy="349" r="17" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(917.95 337.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8V5h14v3M12 5v14M9 19h6"/></g>
+<circle cx="929" cy="454" r="17" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(917.95 442.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H11l-5 4.5V16H4zM8 9h8M8 12h5"/></g>
+<circle cx="419" cy="734" r="17" fill="#D97706" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(407.95 722.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12H7l2.5-7 4.5 14 2.5-7h5"/></g>
+<circle cx="644" cy="734" r="17" fill="#D97706" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(632.95 722.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/></g>
+<circle cx="929" cy="604" r="17" fill="#64748B" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(917.95 592.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="12" r="4.5"/><path d="M12 12h9.5M18 12v4M21.5 12v3"/></g>
+<circle cx="929" cy="734" r="17" fill="#64748B" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(917.95 722.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8.5 4.5v9L12 21l-8.5-4.5v-9zM3.5 7.5L12 12l8.5-4.5M12 12v9"/></g>
+<circle cx="1279" cy="184" r="17" fill="#64748B" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(1267.95 172.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 16a4.5 4.5 0 0 1-.5-9A6 6 0 0 1 18 8a4 4 0 0 1-.5 8M12 10v10M8.5 16.5L12 20l3.5-3.5"/></g>
+<circle cx="1279" cy="349" r="17" fill="#0F766E" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(1267.95 337.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8V5h14v3M12 5v14M9 19h6"/></g>
+<circle cx="1279" cy="454" r="17" fill="#0F766E" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(1267.95 442.95) scale(0.921)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v12H11l-5 4.5V16H4zM8 9h8M8 12h5"/></g>
+<rect x="690" y="34" width="168" height="30" rx="15" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="706" cy="49" r="5.5" fill="#24292F"/>
+<text x="718" y="54" font-size="13" fill="#111827" text-anchor="start" font-weight="bold">GitHub Codespaces</text>
+<rect x="866" y="34" width="84" height="30" rx="15" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="882" cy="49" r="5.5" fill="#3776AB"/>
+<text x="894" y="54" font-size="13" fill="#111827" text-anchor="start" font-weight="bold">Python</text>
+<rect x="958" y="34" width="100" height="30" rx="15" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="974" cy="49" r="5.5" fill="#FF4B4B"/>
+<text x="986" y="54" font-size="13" fill="#111827" text-anchor="start" font-weight="bold">Streamlit</text>
+<rect x="1066" y="34" width="108" height="30" rx="15" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="1082" cy="49" r="5.5" fill="#0D9488"/>
+<text x="1094" y="54" font-size="13" fill="#111827" text-anchor="start" font-weight="bold">PocketTTS</text>
+<rect x="1182" y="34" width="90" height="30" rx="15" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="1198" cy="49" r="5.5" fill="#EE4C2C"/>
+<text x="1210" y="54" font-size="13" fill="#111827" text-anchor="start" font-weight="bold">PyTorch</text>
+<rect x="1280" y="34" width="72" height="30" rx="15" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="1296" cy="49" r="5.5" fill="#F55036"/>
+<text x="1308" y="54" font-size="13" fill="#111827" text-anchor="start" font-weight="bold">Groq</text>
+<rect x="1360" y="34" width="124" height="30" rx="15" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="1376" cy="49" r="5.5" fill="#D97706"/>
+<text x="1388" y="54" font-size="13" fill="#111827" text-anchor="start" font-weight="bold">Hugging Face</text>
+<rect x="1492" y="34" width="82" height="30" rx="15" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+<circle cx="1508" cy="49" r="5.5" fill="#0F80CC"/>
+<text x="1520" y="54" font-size="13" fill="#111827" text-anchor="start" font-weight="bold">SQLite</text>
+</svg>
