@@ -13,6 +13,8 @@ def isolated_env(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
     monkeypatch.setenv("RETENTION_DAYS", "1")
+    for var in ("POCKET_TEMP", "POCKET_STEPS", "POCKET_EOS_THRESHOLD"):
+        monkeypatch.delenv(var, raising=False)
 
 
 def make_wav(seconds=6.0, amp=0.3, rate=16000) -> bytes:

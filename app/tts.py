@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -95,11 +96,30 @@ def clean_tuning(d: dict | None) -> dict:
     return out
 
 
+ENV_TUNING = {"temp": "POCKET_TEMP", "steps": "POCKET_STEPS", "eos_threshold": "POCKET_EOS_THRESHOLD"}
+
+
 def get_tuning() -> dict:
+    """Settings used for speech. Per setting: environment / .env wins, then the saved file, then the default."""
     try:
-        return clean_tuning(json.loads(get_settings().tuning_path.read_text()))
+        values = json.loads(get_settings().tuning_path.read_text())
     except (OSError, ValueError):
-        return dict(DEFAULT_TUNING)
+        values = {}
+    if not isinstance(values, dict):
+        values = {}
+    for key, var in ENV_TUNING.items():
+        raw = os.environ.get(var, "").strip()
+        if not raw:
+            continue
+        try:
+            number = float(raw)
+        except ValueError:
+            number = float("nan")
+        if math.isfinite(number):
+            values[key] = number
+        else:
+            log.warning("Ignoring %s: not a number", var)
+    return clean_tuning(values)
 
 
 def save_tuning(d: dict) -> dict:

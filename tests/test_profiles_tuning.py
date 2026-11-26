@@ -58,6 +58,22 @@ def test_tuning_defaults_clamp_save_reset():
     assert tts.get_tuning() == tts.DEFAULT_TUNING
 
 
+def test_env_overrides_saved_tuning_per_setting(monkeypatch):
+    tts.save_tuning({"temp": 0.9, "steps": 4})
+    monkeypatch.setenv("POCKET_TEMP", "0.5")
+    monkeypatch.setenv("POCKET_EOS_THRESHOLD", "-3")
+    assert tts.get_tuning() == {"temp": 0.5, "steps": 4, "eos_threshold": -3.0}
+    monkeypatch.setenv("POCKET_STEPS", "99")  # clamped to the allowed range
+    assert tts.get_tuning()["steps"] == 8
+
+
+@pytest.mark.parametrize("bad", ["", "  ", "loud", "nan", "inf"])
+def test_invalid_env_tuning_is_ignored(monkeypatch, bad):
+    tts.save_tuning({"temp": 0.9})
+    monkeypatch.setenv("POCKET_TEMP", bad)
+    assert tts.get_tuning()["temp"] == 0.9
+
+
 def test_synthesize_applies_tuning_and_profile(monkeypatch):
     class FakeModel:
         sample_rate = 24000

@@ -295,7 +295,15 @@ Download the `compare_*.wav` files from the Codespaces file explorer. (`*.wav` i
 | `steps` (sampler decode steps) | 1 | 1 – 8 | More steps can improve **quality** but are slower |
 | `eos_threshold` | −4.0 | −10 – 5 | End-of-speech detection. **Lower** finishes earlier (fixes rambling); **higher** continues longer (fixes cut-off endings) |
 
-Save your choice (applies from the next answer, no restart):
+**Option 1: set them in `.env`** (or as environment variables), then restart the app:
+```ini
+POCKET_TEMP=0.5
+POCKET_STEPS=2
+POCKET_EOS_THRESHOLD=-4
+```
+These **override** the saved settings below, one setting at a time. Leave a line blank to use the saved value or default.
+
+**Option 2: save your choice** (applies from the next answer, no restart; ignored for any setting that is set in `.env`):
 ```bash
 uv run python -c 'import sys; sys.path.insert(0,"app"); import tts; print(tts.save_tuning({"temp": 0.6, "steps": 2}))'
 ```
@@ -453,6 +461,7 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | `HISTORY_TURNS` | `6` | Chat memory; `0` disables |
 | `REQUEST_TIMEOUT_S` | `30` | Groq timeout |
 | `POCKET_QUANTIZE` | `0` | `1` enables int8 quantization |
+| `POCKET_TEMP`, `POCKET_STEPS`, `POCKET_EOS_THRESHOLD` | blank (0.3, 1, −4) | Voice tuning: see [Step 5](#step-5--tune-how-it-speaks) |
 | `DATA_DIR` | `./data` | Voices and database location |
 | `RETENTION_DAYS` | `14` | Age limit for samples and errors |
 | `SAMPLE_INTERVAL_S` | `5` | Monitoring interval |
