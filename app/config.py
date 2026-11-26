@@ -55,6 +55,11 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _choice(name: str, allowed: tuple[str, ...], default: str) -> str:
+    value = os.environ.get(name, "").strip().lower()
+    return value if value in allowed else default
+
+
 @dataclass
 class Settings:
     groq_api_key: str
@@ -71,6 +76,7 @@ class Settings:
     admin_password: str  # on a public link, required to manage voices
     exposed: bool  # set by `./run.sh --expose`
     quantize: bool  # int8 quantization of the TTS model (applied at load, so it needs an app restart)
+    denoise: str  # default noise reduction for new voice samples: off, light, medium or strong
 
     @property
     def voice_dir(self) -> Path:
@@ -122,4 +128,5 @@ def get_settings() -> Settings:
         admin_password=e("ADMIN_PASSWORD", ""),
         exposed=e("POCKET_EXPOSED", "0").lower() in ("1", "true", "yes"),
         quantize=e("POCKET_QUANTIZE", "0").lower() in ("1", "true", "yes"),
+        denoise=_choice("POCKET_DENOISE", ("off", "light", "medium", "strong"), "off"),
     )

@@ -230,7 +230,17 @@ afconvert -f WAVE -d LEI16@16000 -c 1 in.m4a my_voice.wav
 
 ## Step 2 · Clean the audio
 
-**Done automatically by the app:** decoding MP3/FLAC/OGG, trimming to 20 s, boosting quiet recordings to a normal level, and rejecting silence. The app does **not** remove background noise or echo.
+**Done automatically by the app:** decoding MP3/FLAC/OGG, trimming to 20 s, boosting quiet recordings to a normal level, and rejecting silence.
+
+**Built-in noise reduction:** on Voice Setup choose **Reduce background noise** → `light`, `medium` or `strong`, listen to *Original* and *Cleaned*, then click **Create voice**. Start with `light`; if your voice sounds metallic or muffled, go lighter. Set a default with `POCKET_DENOISE` in `.env`.
+
+| Helps with | Does not remove |
+|---|---|
+| Steady noise: fan, air conditioner, hiss, hum | Other people talking, TV, music, sudden sounds, echo |
+
+It learns the noise from the quietest parts of your clip, so leave short natural pauses. It cleans **new voice samples only**: re-create an existing voice to apply it. Your spoken questions are not filtered.
+
+For other kinds of noise, re-record, or use one of these:
 
 **Option A: clean locally with [Audacity](https://www.audacityteam.org/)** (free, nothing uploaded; menu names vary slightly by version)
 1. Open your recording.
@@ -461,6 +471,7 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | `HISTORY_TURNS` | `6` | Chat memory; `0` disables |
 | `REQUEST_TIMEOUT_S` | `30` | Groq timeout |
 | `POCKET_QUANTIZE` | `0` | `1` enables int8 quantization |
+| `POCKET_DENOISE` | `off` | Default noise reduction for new voices: `off`, `light`, `medium`, `strong` |
 | `POCKET_TEMP`, `POCKET_STEPS`, `POCKET_EOS_THRESHOLD` | blank (0.3, 1, −4) | Voice tuning: see [Step 5](#step-5--tune-how-it-speaks) |
 | `DATA_DIR` | `./data` | Voices and database location |
 | `RETENTION_DAYS` | `14` | Age limit for samples and errors |
@@ -591,7 +602,7 @@ The benchmark saves `data/benchmark.json`.
 - Voice tuning has **no UI yet** (use the commands in Step 5).
 - Public links are temporary testing tunnels with shared passwords (no individual user accounts).
 - Speech is generated in full before playback (no streaming); one request at a time.
-- No background-noise removal, voice-activity detection or M4A support.
+- Noise reduction handles steady noise in voice samples only (no removal of other voices). No voice-activity detection or M4A support.
 - English model only unless you edit the code. **Telugu and other languages:** see [Next phases](docs/NEXT_PHASES.md).
 
 ---

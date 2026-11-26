@@ -6,7 +6,8 @@ import streamlit as st
 
 import tts
 import ui
-from audio import SILENCE_RMS, decode_to_wav, to_dbfs, wav_info
+from audio import SILENCE_RMS, background_level, decode_to_wav, to_dbfs, wav_info
+from config import get_settings
 from errors import AppError
 
 ui.setup_page("Voice Setup", "🎤")
@@ -135,11 +136,28 @@ if wav:
     except AppError as e:
         st.error(e.message)
 
+LEVELS = ["off", "light", "medium", "strong"]
+denoise = st.radio("Reduce background noise", LEVELS, index=LEVELS.index(get_settings().denoise), horizontal=True,
+                   help="For steady noise such as a fan, hiss or hum. It cannot remove other voices or TV.")
+if wav and denoise != "off":
+    try:
+        before, _ = tts.prepare_reference(wav, "off")
+        after, _ = tts.prepare_reference(wav, denoise)
+        left, right = st.columns(2)
+        left.caption(f"Original · background {background_level(before):.0f} dBFS")
+        left.audio(before, format="audio/wav")
+        right.caption(f"Cleaned ({denoise}) · background {background_level(after):.0f} dBFS")
+        right.audio(after, format="audio/wav")
+        st.caption("Lower background is quieter. Listen to both: if your voice sounds metallic or muffled, "
+                   "choose a lighter level.")
+    except AppError as e:
+        st.error(e.message)
+
 if st.button("Create voice", type="primary", disabled=not (wav and consent and new_name)):
     with st.spinner("Loading PocketTTS (first run downloads the model) and encoding the voice…"):
         t = time.perf_counter()
         try:
-            res = tts.build_profile(wav, name=new_name, make_active=make_default)
+            res = tts.build_profile(wav, name=new_name, make_active=make_default, denoise=denoise)
             note = (f" The {res['original_s']:.0f}s recording was trimmed to its first {res['duration_s']:.0f}s."
                     if res["trimmed"] else "")
             ss["flash"] = f"Voice '{res['name']}' saved in {time.perf_counter() - t:.1f}s.{note}"

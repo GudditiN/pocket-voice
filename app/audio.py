@@ -100,6 +100,83 @@ def normalize_wav(data: bytes, target_dbfs: float = TARGET_DBFS) -> bytes:
     return buf.getvalue()
 
 
+# level -> (how strongly the noise estimate is subtracted, maximum attenuation in dB)
+DENOISE_LEVELS = {"light": (1.5, 10.0), "medium": (2.0, 16.0), "strong": (3.0, 24.0)}
+
+
+def _mono_samples(data: bytes) -> tuple[np.ndarray, int]:
+    with wave.open(io.BytesIO(data), "rb") as w:
+        p = w.getparams()
+        frames = w.readframes(p.nframes)
+    x = np.frombuffer(frames, dtype="<i2").astype(np.float64) / 32768.0
+    if p.nchannels > 1:
+        x = x[: len(x) // p.nchannels * p.nchannels].reshape(-1, p.nchannels).mean(axis=1)
+    return x, p.framerate
+
+
+def background_level(data: bytes) -> float:
+    """Level in dBFS of the quieter parts (10th percentile of 20 ms windows): roughly the background noise."""
+    wav_info(data)
+    x, rate = _mono_samples(data)
+    win = max(1, int(rate * 0.02))
+    n = x.size // win
+    if not n:
+        return to_dbfs(0.0)
+    levels = np.sqrt((x[: n * win].reshape(n, win) ** 2).mean(axis=1))
+    return to_dbfs(float(np.percentile(levels, 10)))
+
+
+def _smooth(a: np.ndarray, size: int, axis: int) -> np.ndarray:
+    """Moving average of odd length `size` along `axis`, keeping the shape."""
+    pad = [(size // 2, size // 2) if i == axis else (0, 0) for i in range(a.ndim)]
+    padded = np.pad(a, pad, mode="edge")
+    return np.lib.stride_tricks.sliding_window_view(padded, size, axis=axis).mean(axis=-1)
+
+
+def reduce_noise(data: bytes, level: str = "medium") -> bytes:
+    """Reduce steady background noise (fan, hiss, hum) by spectral gating. Returns mono 16-bit WAV.
+
+    The noise spectrum is estimated from the quietest tenth of the recording, so it works best when there are
+    short pauses between words. It does not remove other voices, TV or sudden sounds.
+    """
+    if level not in DENOISE_LEVELS:
+        raise ValueError(f"Unknown noise reduction level: {level!r}")
+    wav_info(data)  # validates the WAV
+    x, rate = _mono_samples(data)
+    n = 2 ** int(round(np.log2(rate * 0.032)))  # about 32 ms frames
+    hop = n // 4
+    if x.size < n * 8:
+        return data
+    over, max_cut_db = DENOISE_LEVELS[level]
+    window = np.hanning(n + 1)[:-1]
+    padded = np.pad(x, (n, n + (-x.size) % hop), mode="reflect")
+    frames = np.lib.stride_tricks.sliding_window_view(padded, n)[::hop] * window
+    spectrum = np.fft.rfft(frames, axis=1)
+    power = np.abs(spectrum) ** 2
+
+    energy = power.sum(axis=1)
+    audible = np.flatnonzero(energy > 1e-7)  # ignore digital silence, which would hide the real noise
+    if audible.size < 8:
+        return data
+    quiet = audible[np.argsort(energy[audible])[: max(4, audible.size // 10)]]
+    noise = power[quiet].mean(axis=0)
+
+    smoothed = _smooth(_smooth(power, 5, axis=0), 3, axis=1)
+    gain = np.sqrt(np.clip(1.0 - over * noise / (smoothed + 1e-12), 0.0, 1.0))
+    gain = np.maximum(gain, 10 ** (-max_cut_db / 20))
+    gain = _smooth(_smooth(gain, 3, axis=0), 3, axis=1)  # avoids "musical" artefacts
+
+    cleaned = np.fft.irfft(spectrum * gain, n=n, axis=1) * window
+    out = np.zeros(padded.size)
+    weight = np.zeros(padded.size)
+    for i, frame in enumerate(cleaned):
+        start = i * hop
+        out[start : start + n] += frame
+        weight[start : start + n] += window**2
+    y = (out / np.maximum(weight, 1e-8))[n : n + x.size]
+    return float_to_wav(y.astype(np.float32), rate)
+
+
 def trim_wav(data: bytes, seconds: float) -> bytes:
     """Return the first `seconds` of a PCM WAV as a new WAV (unchanged if already shorter)."""
     with wave.open(io.BytesIO(data), "rb") as w:

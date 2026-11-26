@@ -16,7 +16,7 @@ import time
 
 import numpy as np
 
-from audio import SILENCE_RMS, float_to_wav, normalize_wav, to_dbfs, trim_wav, wav_info
+from audio import SILENCE_RMS, float_to_wav, normalize_wav, reduce_noise, to_dbfs, trim_wav, wav_info
 from config import get_settings
 from errors import AppError
 
@@ -206,17 +206,30 @@ def profile_info(name: str | None = None) -> dict | None:
             "has_reference": ref.exists()}
 
 
-def build_profile(wav_bytes: bytes, name: str = "default", make_active: bool = True) -> dict:
-    """Validate the recording, store it privately, build the voice state and save it as a named profile."""
-    s = get_settings()
-    name = slug(name)
+def prepare_reference(wav_bytes: bytes, denoise: str = "off") -> tuple[bytes, dict]:
+    """The exact audio a voice is built from: validated, trimmed, optionally de-noised, level-boosted."""
     original = validate_reference(wav_bytes)
     trimmed = original > USE_REF_S
     if trimmed:  # a clip of 10-20 s is enough; keep the first USE_REF_S seconds
         wav_bytes = trim_wav(wav_bytes, USE_REF_S)
         validate_reference(wav_bytes)  # the kept part must contain speech
+    if denoise != "off":
+        wav_bytes = reduce_noise(wav_bytes, denoise)
+        validate_reference(wav_bytes)  # cleaning must not leave silence
     wav_bytes = normalize_wav(wav_bytes)  # boost a quiet recording before encoding the voice
-    duration = min(original, USE_REF_S)
+    return wav_bytes, {"duration_s": min(original, USE_REF_S), "original_s": original, "trimmed": trimmed,
+                       "denoise": denoise}
+
+
+def build_profile(wav_bytes: bytes, name: str = "default", make_active: bool = True,
+                  denoise: str | None = None) -> dict:
+    """Validate the recording, store it privately, build the voice state and save it as a named profile.
+
+    denoise: off, light, medium or strong (default: the POCKET_DENOISE setting).
+    """
+    s = get_settings()
+    name = slug(name)
+    wav_bytes, details = prepare_reference(wav_bytes, s.denoise if denoise is None else denoise)
     if shutil.disk_usage(s.data_dir if s.data_dir.exists() else s.data_dir.parent).free < 200 * 1024**2:
         raise AppError("disk", "Less than 200 MB of free disk space.")
     d, ref, prof = _paths(name)
@@ -248,8 +261,7 @@ def build_profile(wav_bytes: bytes, name: str = "default", make_active: bool = T
         _states[name] = (prof.stat().st_mtime, state)
     if make_active:
         set_active(name)
-    return {"name": name, "duration_s": duration, "original_s": original, "trimmed": trimmed,
-            "voice_state_s": last_timings["voice_state_s"]}
+    return {"name": name, **details, "voice_state_s": last_timings["voice_state_s"]}
 
 
 def _load_state(name: str):
