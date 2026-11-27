@@ -225,6 +225,46 @@ def test_nse_listing_preferred(monkeypatch):
     assert "RELIANCE.NS" in seen[-1]
 
 
+def test_repeat_lookups_come_from_the_cache(monkeypatch):
+    seen = serve(monkeypatch, {"duckduckgo.com/html": (200, "text/html", DDG)})
+    first = run(live.Session("q"), "web_search", query="SniffyNose")
+    again = live.Session("q")
+    assert run(again, "web_search", query="sniffynose") == first and len(seen) == 1
+    assert again.sources and again.may_read("https://sniffynose.com/")  # sources and permissions still apply
+
+
+def test_cache_expires_and_errors_are_not_kept(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(live.time, "monotonic", lambda: now[0])
+    calls = []
+
+    def quote_tool(value):
+        calls.append(value)
+        if len(calls) == 1:
+            raise live.ToolError("down")
+        return {"source": "x", "price": len(calls)}
+
+    with pytest.raises(live.ToolError):
+        live.cached_call("market_quote", quote_tool, "nifty")
+    assert live.cached_call("market_quote", quote_tool, "nifty")["price"] == 2
+    assert live.cached_call("market_quote", quote_tool, "nifty")["price"] == 2
+    now[0] += live.CACHE_SECONDS["market_quote"] + 1
+    assert live.cached_call("market_quote", quote_tool, "nifty")["price"] == 3
+
+
+def test_cache_is_bounded():
+    cache = live.TTLCache(max_items=3)
+    for i in range(5):
+        cache.put(i, i, 60)
+    assert [cache.get(i) for i in range(5)] == [None, None, 2, 3, 4]
+
+
+def test_cached_page_still_needs_permission(monkeypatch):
+    serve(monkeypatch, {"sniffynose.com": (200, "text/html", "<title>S</title>")})
+    run(live.Session("what is sniffynose.com"), "read_webpage", url="https://sniffynose.com/")
+    assert "error" in run(live.Session("hello"), "read_webpage", url="https://sniffynose.com/")
+
+
 def test_pipeline_passes_switch_and_keeps_sources(monkeypatch):
     store.init()
     seen = {}

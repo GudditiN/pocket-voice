@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS requests (
   status TEXT NOT NULL, error_cat TEXT,
   asr_model TEXT, llm_model TEXT, tts_model TEXT,
   prompt_tokens INTEGER, completion_tokens INTEGER,
-  question_chars INTEGER, answer_chars INTEGER
+  question_chars INTEGER, answer_chars INTEGER, first_audio_ms REAL
 );
 CREATE INDEX IF NOT EXISTS idx_requests_ts ON requests(ts);
 CREATE TABLE IF NOT EXISTS resource_samples (
@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_errors_ts ON errors(ts);
 
 REQUEST_COLS = ["id", "ts", "asr_ms", "llm_ms", "tts_ms", "total_ms", "in_audio_s", "out_audio_s", "status",
                 "error_cat", "asr_model", "llm_model", "tts_model", "prompt_tokens", "completion_tokens",
-                "question_chars", "answer_chars"]
+                "question_chars", "answer_chars", "first_audio_ms"]
 SAMPLE_COLS = ["ts", "cpu", "proc_cpu", "mem_pct", "proc_mem_pct", "proc_rss", "net_sent", "net_recv",
                "net_up_bps", "net_down_bps"]
 
@@ -69,7 +69,14 @@ def _run(fn, default=None, write=False):
 
 
 def init() -> bool:
-    return _run(lambda c: c.executescript(SCHEMA) is not None, False, write=True)
+    def fn(c):
+        c.executescript(SCHEMA)
+        have = {row[1] for row in c.execute("PRAGMA table_info(requests)")}
+        if "first_audio_ms" not in have:  # databases created by earlier versions
+            c.execute("ALTER TABLE requests ADD COLUMN first_audio_ms REAL")
+        return True
+
+    return _run(fn, False, write=True)
 
 
 def _insert(table: str, cols: list[str], row: dict) -> None:
@@ -147,6 +154,7 @@ def summarize(rows: list[dict]) -> dict:
         "avg_total_ms": _avg(totals),
         "median_total_ms": statistics.median(totals) if totals else None,
         "p95_total_ms": _p95(totals),
+        "avg_first_audio_ms": _avg(col("first_audio_ms")),
         "avg_asr_ms": _avg(col("asr_ms")), "avg_llm_ms": _avg(col("llm_ms")), "avg_tts_ms": _avg(col("tts_ms")),
         "total_audio_out_s": sum(col("out_audio_s")) if col("out_audio_s") else None,
         "total_tokens": sum(tokens) if tokens else None,

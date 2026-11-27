@@ -135,6 +135,7 @@ def voice_tab(rng_s):
     c[2].metric("Failed", s["failed"])
     c[3].metric("Audio generated", "n/a" if s["total_audio_out_s"] is None else f"{s['total_audio_out_s']:.0f} s")
     c[4].metric("Tokens used", "n/a" if s["total_tokens"] is None else f"{s['total_tokens']:,}")
+    st.metric("Avg time to first spoken word (fast reply)", secs(s["avg_first_audio_ms"]))
     c = st.columns(6)
     c[0].metric("Avg response", secs(s["avg_total_ms"]))
     c[1].metric("Median response", secs(s["median_total_ms"]))

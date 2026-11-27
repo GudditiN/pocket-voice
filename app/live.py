@@ -15,8 +15,10 @@ import logging
 import re
 import socket
 import ssl
+import threading
 import time
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from urllib.parse import parse_qs, quote, urlencode, urljoin, urlsplit
@@ -400,6 +402,56 @@ _DOMAIN = re.compile(r"\b((?:[a-z0-9-]+\.)+(?:com|in|org|net|io|ai|co|app|dev|ed
                      re.I)
 
 
+# ---------------------------------------------------------------- cache
+# Seconds a successful result is reused, so repeat questions answer faster and free sources aren't hammered.
+CACHE_SECONDS = {"market_quote": 60, "news": 300, "weather": 600, "web_search": 600, "read_webpage": 600,
+                 "wikipedia": 3600, "office_holder": 3600}
+
+
+class TTLCache:
+    """Small in-memory cache with expiry; drops the oldest entry when full. Cleared on restart."""
+
+    def __init__(self, max_items: int = 200):
+        self.max_items = max_items
+        self._items: OrderedDict = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key):
+        with self._lock:
+            expires, value = self._items.get(key, (0, None))
+            if expires <= time.monotonic():
+                self._items.pop(key, None)
+                return None
+            return value
+
+    def put(self, key, value, seconds: float) -> None:
+        with self._lock:
+            self._items.pop(key, None)
+            self._items[key] = (time.monotonic() + seconds, value)
+            while len(self._items) > self.max_items:
+                self._items.popitem(last=False)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._items.clear()
+
+
+CACHE = TTLCache()
+
+
+def cached_call(tool: str, function, value: str) -> dict:
+    """Run a tool, reusing a recent result for the same request. Errors are never cached."""
+    s = get_settings()
+    # Web addresses are case sensitive; search words and names are not.
+    key = (tool, value if tool == "read_webpage" else value.lower(), s.live_region, bool(s.tavily_api_key))
+    data = CACHE.get(key)
+    if data is None:
+        data = function(value)
+        stand_in = "unavailable" in str(data.get("source", ""))  # fallback results: try the real search again soon
+        CACHE.put(key, data, 60 if stand_in else CACHE_SECONDS[tool])
+    return data
+
+
 class Session:
     """Tool calls for one question: remembers which pages may be read and which sources were used."""
 
@@ -455,7 +507,7 @@ class Session:
                 if not self.may_read(value):
                     raise ToolError("Only pages the user named or that appear in search results can be read. "
                                     "Use web_search first.")
-            data = function(value)
+            data = cached_call(tool, function, value)
             self._remember(data)
             self._cite(data)
             return json.dumps(data, ensure_ascii=False)[:5000]

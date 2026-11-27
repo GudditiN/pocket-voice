@@ -43,8 +43,9 @@ if not os.environ.get("POCKET_VOICE_NO_DOTENV"):  # tests set this so a real .en
     load_dotenv()
 
 DEFAULT_PROMPT = (
-    "You are a friendly voice assistant. Answer in one to three short spoken sentences. "
-    "Plain text only: no markdown, lists, or emojis."
+    "You are a warm, friendly person talking on a phone call. Reply the way people speak: start with a few natural "
+    "words, use contractions, and keep it to one to three short sentences. Do not repeat the question or announce "
+    "what you are going to do. Plain text only: no markdown, lists, or emojis."
 )
 
 
@@ -81,6 +82,9 @@ class Settings:
     tavily_api_key: str  # optional: more dependable web search
     live_region: str  # two-letter country code for news, e.g. IN or US
     app_timezone: str  # used to tell the model today's date and time
+    fast_reply: bool  # speak while the answer is still being written
+    fillers: bool  # short "let me check" phrases while waiting
+    warm_up: bool  # load the voice model at startup
 
     @property
     def voice_dir(self) -> Path:
@@ -137,4 +141,7 @@ def get_settings() -> Settings:
         tavily_api_key=e("TAVILY_API_KEY", "").strip(),
         live_region=(e("LIVE_REGION", "") or "IN").strip().upper()[:2],
         app_timezone=e("APP_TIMEZONE", "") or "Asia/Kolkata",
+        fast_reply=e("FAST_REPLY", "1").lower() in ("1", "true", "yes"),
+        fillers=e("FILLERS", "1").lower() in ("1", "true", "yes"),
+        warm_up=e("POCKET_WARMUP", "1").lower() in ("1", "true", "yes"),
     )

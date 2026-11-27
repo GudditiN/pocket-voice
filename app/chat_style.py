@@ -3,6 +3,8 @@
 Targets Streamlit's data-testid attributes (checked against Streamlit 1.67). If a future version renames them,
 the chat box still works and only falls back to the default look.
 """
+import html
+
 import streamlit as st
 
 MIC_SIZE_PX = 52  # change this to make the microphone button bigger or smaller
@@ -10,6 +12,9 @@ MIC_SIZE_PX = 52  # change this to make the microphone button bigger or smaller
 _CSS = """
 <style>
 :root { --pv-mic: __MIC__px; --pv-accent: #4f46e5; --pv-live: #ef4444; }
+
+/* audio pieces of fast replies are scripts only: take no space */
+[class*="st-key-pvsound"] { display: none !important; }
 
 /* composer */
 [data-testid="stChatInput"] > div {
@@ -58,8 +63,27 @@ _CSS = """
 @keyframes pv-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,.45); } 50% { box-shadow: 0 0 0 10px rgba(239,68,68,0); } }
 @keyframes pv-blink { 0%,100% { opacity: 1; } 50% { opacity: .65; } }
 @media (prefers-reduced-motion: reduce) { [data-testid="stChatInput"] *, [data-testid="stChatInput"]::before { animation: none !important; } }
+
+/* thinking: shown in the reply while the answer is on its way */
+.pv-think { display: inline-flex; align-items: center; gap: .7rem; padding: .55rem 1rem; border-radius: 18px 18px 18px 4px;
+  background: linear-gradient(110deg, rgba(79,70,229,.12) 30%, rgba(20,184,166,.28) 50%, rgba(79,70,229,.12) 70%);
+  background-size: 250% 100%; animation: pv-shimmer 1.8s linear infinite; font-weight: 600; }
+.pv-dots { display: inline-flex; gap: 5px; align-items: flex-end; height: 16px; }
+.pv-dots i { width: 9px; height: 9px; border-radius: 50%; background: linear-gradient(135deg, #4f46e5, #14b8a6);
+  animation: pv-bounce 1.1s ease-in-out infinite; }
+.pv-dots i:nth-child(2) { animation-delay: .15s; }
+.pv-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes pv-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .55; } 30% { transform: translateY(-7px); opacity: 1; } }
+@keyframes pv-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@media (prefers-reduced-motion: reduce) { .pv-think, .pv-dots i { animation: none !important; } }
 </style>
 """
+
+
+def thinking(label: str) -> str:
+    """HTML for the animated 'thinking' bubble."""
+    return (f"<div class='pv-think' role='status'><span class='pv-dots' aria-hidden='true'><i></i><i></i><i></i></span>"
+            f"<span>{html.escape(label)}</span></div>")
 
 
 def apply() -> None:

@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import html
+import threading
 
 import streamlit as st
 
 import auth
 import monitor
 import store
+import tts
 from config import get_settings
 
 # Neutral translucent greys keep this readable in both light and dark themes.
@@ -43,6 +45,8 @@ def _boot() -> bool:
     store.init()
     store.cleanup()
     monitor.start_sampler()
+    if get_settings().warm_up:  # the first question shouldn't wait for the model to load
+        threading.Thread(target=tts.warm_up, name="voice-warm-up", daemon=True).start()
     return True
 
 

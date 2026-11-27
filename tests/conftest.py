@@ -13,6 +13,10 @@ def isolated_env(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
     monkeypatch.setenv("RETENTION_DAYS", "1")
+    monkeypatch.setenv("POCKET_WARMUP", "0")  # no background model loading during tests
+    import live
+
+    live.CACHE.clear()  # one test's web results must not answer another's
     for var in ("POCKET_TEMP", "POCKET_STEPS", "POCKET_EOS_THRESHOLD", "POCKET_DENOISE"):
         monkeypatch.delenv(var, raising=False)
 

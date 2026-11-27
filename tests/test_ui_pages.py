@@ -87,6 +87,22 @@ def test_typed_message_is_answered_in_the_chosen_voice(monkeypatch):
     assert at.session_state["turns"][0]["a"] == "Paris."
 
 
+def test_failed_turn_removes_the_thinking_animation(monkeypatch):
+    import pipeline
+
+    def fail(audio, history, prompt, **kw):
+        kw["on_status"]("Generating response")
+        return pipeline.TurnResult("id2", error_category="network", error_message="Could not reach Groq.")
+
+    monkeypatch.setattr(pipeline, "run_turn", fail)
+    add_voice("alpha")
+    at = page(HOME)
+    at.chat_input[0].set_value("hello").run()
+    assert not at.exception, at.exception
+    assert any("Could not reach Groq" in e.value for e in at.error)
+    assert not any("<div class='pv-think'" in m.value for m in at.markdown)
+
+
 def test_assistant_without_voices_warns():
     at = page(HOME)
     assert not at.selectbox and any("No voice profile yet" in w.value for w in at.warning)

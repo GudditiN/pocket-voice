@@ -5,10 +5,12 @@ pocket_tts is imported lazily so the rest of the app (and unit tests) work witho
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
 import os
+import random
 import re
 import shutil
 import threading
@@ -257,6 +259,7 @@ def build_profile(wav_bytes: bytes, name: str = "default", make_active: bool = T
             raise _explain("Voice profile creation failed", e) from e
         os.replace(ref_tmp, ref)
         os.replace(prof_tmp, prof)
+        shutil.rmtree(d / "fillers", ignore_errors=True)  # phrases made with the previous recording
         os.chmod(prof, 0o600)
         _states[name] = (prof.stat().st_mtime, state)
     if make_active:
@@ -295,6 +298,88 @@ def delete_profile(name: str | None = None) -> None:
 
 
 # ---------------------------------------------------------------- synthesis
+def synthesize_stream(text: str, profile: str | None = None, tuning: dict | None = None,
+                      first_chunk_s: float = 0.4, chunk_s: float = 0.8):
+    """Speak text piece by piece. Yields (samples float32, sample_rate) while the model is still generating."""
+    text = (text or "").strip()
+    if not text:
+        raise AppError("tts", "Nothing to speak.")
+    t = clean_tuning(tuning) if tuning is not None else get_tuning()
+    name = profile or active_profile()
+    if not name:
+        raise AppError("no_profile", "No voice profile yet. Create one on the Voice Setup page.")
+    with _lock:
+        state = _load_state(name)
+        model = _get_model()
+        model.temp, model.sampler_decode_steps, model.eos_threshold = t["temp"], t["steps"], t["eos_threshold"]
+        rate = int(model.sample_rate)
+        held, size, wanted = [], 0, first_chunk_s * rate
+        try:
+            for piece in model.generate_audio_stream(state, text[:MAX_TEXT_CHARS]):
+                samples = np.asarray(piece.detach().cpu().numpy() if hasattr(piece, "detach") else piece,
+                                     dtype=np.float32).reshape(-1)
+                held.append(samples)
+                size += samples.size
+                if size >= wanted:
+                    yield np.concatenate(held), rate
+                    held, size, wanted = [], 0, chunk_s * rate
+        except Exception as e:
+            raise AppError("tts", f"Speech generation failed: {e}") from e
+        if held:
+            yield np.concatenate(held), rate
+
+
+# ---------------------------------------------------------------- fillers and warm-up
+FILLERS = {"think": ["Hmm, let me think.", "Okay, one second.", "Right, so..."],
+           "search": ["Let me check that for you.", "One moment, I'm looking it up."]}
+
+
+def _filler_path(name: str, text: str):
+    key = hashlib.sha1(f"{text}|{json.dumps(get_tuning(), sort_keys=True)}".encode()).hexdigest()[:16]
+    return _paths(name)[0] / "fillers" / f"{key}.wav"
+
+
+def filler(kind: str, profile: str | None = None) -> bytes | None:
+    """A ready-made short phrase in this voice, or None. Never generates (so it never adds delay)."""
+    name = profile or active_profile()
+    if not name:
+        return None
+    ready = [p for p in (_filler_path(name, t) for t in FILLERS.get(kind, [])) if p.exists()]
+    return random.choice(ready).read_bytes() if ready else None
+
+
+def make_fillers(profile: str | None = None) -> int:
+    """Generate any missing filler phrases for a voice. Returns how many were created."""
+    name = profile or active_profile()
+    if not name or not profile_exists(name):
+        return 0
+    made = 0
+    for text in (t for phrases in FILLERS.values() for t in phrases):
+        path = _filler_path(name, text)
+        if path.exists():
+            continue
+        wav, _ = synthesize(text, profile=name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(wav)
+        os.chmod(path, 0o600)
+        made += 1
+    return made
+
+
+def warm_up() -> None:
+    """Load the model and the default voice ahead of the first question (run in the background at startup)."""
+    try:
+        name = active_profile()
+        if not name:
+            return
+        with _lock:
+            _load_state(name)
+        if get_settings().fillers:
+            make_fillers(name)
+    except Exception as e:  # the first real request will report any problem to the user
+        log.warning("voice warm-up skipped: %s", e)
+
+
 def synthesize(text: str, profile: str | None = None, tuning: dict | None = None) -> tuple[bytes, float]:
     """Speak text. Returns (wav_bytes, audio_duration_s).
 

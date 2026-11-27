@@ -23,7 +23,7 @@ with a live dashboard showing CPU, memory and latency.
 | [1. Aim](#-aim) | [6. Record a good sample](#step-1--record-a-good-sample) | [13. Settings](#-customize-the-app) |
 | [2. Architecture & data flow](#-architecture-and-data-flow) | [7. Clean the audio](#step-2--clean-the-audio) | [14. Size & data](#-size-resources-and-data) |
 | [3. About PocketTTS](#-about-pockettts) | [8. Create, compare, tune](#step-3--create-the-voice-profile) | [15. Dashboard](#-the-dashboard) |
-| [4. Quick start](#-quick-start-github-codespaces) · [Live answers](#-live-answers-web-search) · [Share a link](#-share-a-public-link) | [9. Clear / delete](#step-6--clear-delete-or-reset-a-voice) | [16. Tests & benchmark](#-tests-and-benchmark) |
+| [4. Quick start](#-quick-start-github-codespaces) · [Fast replies](#-fast-natural-replies) · [Live answers](#-live-answers-web-search) · [Share a link](#-share-a-public-link) | [9. Clear / delete](#step-6--clear-delete-or-reset-a-voice) | [16. Tests & benchmark](#-tests-and-benchmark) |
 | [5. Using the app](#-using-the-app) | [10. Enhance](#-enhance-the-result) | [17. Privacy](#-privacy-and-responsible-use) |
 | | [11. Train](#-train-or-fine-tune-advanced) | [18. Troubleshooting](#-troubleshooting) |
 | | [12. PocketTTS command line](#-use-pockettts-from-the-command-line) | [19. Licenses & sources](#-licenses-and-sources) |
@@ -78,6 +78,7 @@ with a live dashboard showing CPU, memory and latency.
 | [app/pipeline.py](app/pipeline.py) | One turn: ASR → LLM → TTS, timing, error categories |
 | [app/tts.py](app/tts.py) | PocketTTS model, named voice profiles, tuning |
 | [app/asr.py](app/asr.py), [app/llm.py](app/llm.py) | Groq calls (optional local Whisper) and the tool-calling loop |
+| [app/sentences.py](app/sentences.py), [app/player.py](app/player.py) | Cut the streaming answer into sentences; play audio pieces in the browser |
 | [app/live.py](app/live.py) | Live-data tools: search, web pages, news, office holders, markets, weather |
 | [app/audio.py](app/audio.py) | Decode, trim, level check and boost |
 | [app/monitor.py](app/monitor.py), [app/store.py](app/store.py) | psutil sampling and SQLite storage |
@@ -103,7 +104,7 @@ Read more: [demo](https://kyutai.org/pocket-tts) · [model card](https://hugging
 
 **How cloning works:** the model reads your sample once and produces a **voice state**. Saving it as a `.safetensors` file makes later loading fast. Your sample is not used to change the model's weights.
 
-**This app uses:** the default English model, voice cloning, saved voice states and int8 quantization (optional). It does **not** use streaming playback, other languages, preset voices or GPU.
+**This app uses:** the default English model, voice cloning, saved voice states and int8 quantization (optional). Fast replies also use its streaming generation. It does **not** use other languages, preset voices or GPU.
 
 ---
 
@@ -164,6 +165,31 @@ docker run -e GROQ_API_KEY=... -e HF_TOKEN=... -p 8501:8501 -v pv-data:/data poc
 
 ---
 
+## ⚡ Fast, natural replies
+
+With **Fast reply** on (Assistant page, on by default) the steps overlap instead of waiting for each other:
+
+```
+before:  [transcribe] → [write the whole answer] → [make all the audio] → ▶ play
+now:     [transcribe] → [write sentence 1] → ▶ speak it while sentence 2 is written → …
+```
+
+| Technique | What it does |
+|---|---|
+| Sentence-by-sentence | Each sentence is spoken as soon as it is written |
+| Streaming speech | Audio plays in small pieces while PocketTTS is still generating |
+| Fillers | If the answer takes more than about 0.7 s, a short "let me check" plays in your voice |
+| Warm-up | The model, your default voice and the fillers are prepared when the app starts |
+| Spoken style | The built-in prompt asks for short, natural, conversational replies |
+
+Each reply shows **first words after … s**, and the dashboard shows the average.
+
+- **Still push-to-talk:** it doesn't listen while it speaks and you can't interrupt it by talking.
+- **Slow machines:** if speech is generated slower than it plays, you'll hear small gaps. Keep `POCKET_STEPS=1`, try `POCKET_QUANTIZE=1`, use a 4-core Codespace, or switch Fast reply off.
+- **Your own `SYSTEM_PROMPT`** in `.env` replaces the built-in style. Leave it blank to use the new one.
+
+---
+
 ## 🔎 Live answers (web search)
 
 A language model only knows what existed when it was trained. With **Search the web for fresh facts** switched on (Assistant page, on by default), the model can fetch current information before answering. **Nothing is trained**: data is fetched at the moment you ask.
@@ -187,6 +213,8 @@ your question → model picks tools → search / read / look up → model writes
 **Get a Tavily key (recommended).** DuckDuckGo often blocks automated searches. [Tavily](https://tavily.com) lists 1,000 free searches a month with no card. Add it as `TAVILY_API_KEY` (Codespaces secret or `.env`) and restart.
 
 Each answer lists its **sources** as links. Check anything important.
+
+**Caching.** Repeat lookups are answered from a small in-memory cache, which is faster and easier on free rate limits: market prices for 1 minute, news 5 minutes, search, pages and weather 10 minutes, Wikipedia and office holders 1 hour. It holds up to 200 results and empties on restart. **Redis isn't needed** for a single app; it would only help if you ran several copies sharing one cache, or needed the cache to survive restarts.
 
 **Limits and safety**
 - Search words and requested pages go to the services above. Switch it off for private questions.
@@ -509,6 +537,9 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | `REQUEST_TIMEOUT_S` | `30` | Groq timeout |
 | `POCKET_QUANTIZE` | `0` | `1` enables int8 quantization |
 | `POCKET_DENOISE` | `off` | Default noise reduction for new voices: `off`, `light`, `medium`, `strong` |
+| `FAST_REPLY` | `1` | Speak while the answer is being written |
+| `FILLERS` | `1` | Short waiting phrases in your voice |
+| `POCKET_WARMUP` | `1` | Load the voice model at startup |
 | `LIVE_DATA` | `1` | Web search switch on by default (`0` = off) |
 | `TAVILY_API_KEY` | blank | Dependable web search |
 | `LIVE_REGION` | `IN` | Country for news and search |
@@ -645,8 +676,9 @@ The benchmark saves `data/benchmark.json`.
 
 - Needs internet for Groq, and is subject to its rate limits.
 - Voice tuning has **no UI yet** (use the commands in Step 5).
+- Replies are fast but not a live conversation: press the mic to talk; you can't interrupt by speaking.
 - Public links are temporary testing tunnels with shared passwords (no individual user accounts).
-- Speech is generated in full before playback (no streaming); one request at a time.
+- One request is spoken at a time (single-user demo).
 - Noise reduction handles steady noise in voice samples only (no removal of other voices). No voice-activity detection or M4A support.
 - English model only unless you edit the code. **Telugu and other languages:** see [Next phases](docs/NEXT_PHASES.md).
 
