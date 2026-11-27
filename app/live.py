@@ -131,7 +131,7 @@ class _PageText(HTMLParser):
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.title, self.description, self.chunks = "", "", []
+        self.title, self.description, self.image, self.chunks = "", "", "", []
         self._skip, self._in_title = 0, False
 
     def handle_starttag(self, tag, attrs):
@@ -142,6 +142,8 @@ class _PageText(HTMLParser):
             self._in_title = True
         elif tag == "meta" and (a.get("name") or a.get("property") or "").lower() in ("description", "og:description"):
             self.description = self.description or (a.get("content") or "")
+        elif tag == "meta" and (a.get("property") or a.get("name") or "").lower() in ("og:image", "twitter:image"):
+            self.image = self.image or (a.get("content") or "")
 
     def handle_endtag(self, tag):
         if tag in self.SKIP and self._skip:
@@ -187,17 +189,44 @@ def _clip(text: str, n: int) -> str:
     return re.sub(r"\s+", " ", text or "").strip()[:n]
 
 
+# ---------------------------------------------------------------- pictures
+def picture(url: str) -> str:
+    """The address if it is safe to show as a picture in the browser, else an empty string."""
+    try:
+        parts = urlsplit(url or "")
+        host = parts.hostname or ""
+    except ValueError:
+        return ""
+    if parts.scheme != "https" or "." not in host or parts.username or len(url) > 1000:
+        return ""
+    if re.fullmatch(r"[\d.]+|.*:.*", host) or parts.path.lower().endswith(".svg"):
+        return ""
+    return url
+
+
+def _without_pictures(data):
+    """The model only needs the words: picture addresses would waste tokens."""
+    if isinstance(data, dict):
+        return {k: _without_pictures(v) for k, v in data.items() if k not in ("image", "images")}
+    return [_without_pictures(v) for v in data] if isinstance(data, list) else data
+
+
 # ---------------------------------------------------------------- tools
 def _tavily(query: str, key: str) -> list[dict]:
-    request = {"query": query, "max_results": MAX_RESULTS, "search_depth": "basic"}
+    request = {"query": query, "max_results": MAX_RESULTS, "search_depth": "basic", "include_images": True}
     if get_settings().live_region == "IN":
         request["country"] = "india"  # favour Indian pages
     status, _, text = fetch("https://api.tavily.com/search", "POST", json.dumps(request).encode(),
                             {"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
     if status != 200:
         raise ToolError(f"Tavily answered with status {status}.")
-    return [{"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("content", "")}
-            for r in json.loads(text).get("results", [])]
+    reply = json.loads(text)
+    found = [{"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("content", "")}
+             for r in reply.get("results", [])]
+    images = [i if isinstance(i, str) else i.get("url", "") for i in reply.get("images", [])]
+    if found:
+        found[0]["images"] = [u for u in map(picture, images) if u][:4]
+    return found
 
 
 def _duckduckgo(query: str) -> list[dict]:
@@ -237,12 +266,15 @@ def news(query: str) -> dict:
 def wikipedia(topic: str) -> dict:
     data = _get_json("https://en.wikipedia.org/w/api.php?" + urlencode(
         {"action": "query", "format": "json", "generator": "search", "gsrsearch": topic, "gsrlimit": 2,
-         "prop": "extracts|info", "inprop": "url", "exintro": 1, "explaintext": 1, "exchars": 900, "exlimit": 2}))
+         "prop": "extracts|info|pageimages", "inprop": "url", "exintro": 1, "explaintext": 1, "exchars": 900,
+         "exlimit": 2, "piprop": "thumbnail", "pithumbsize": 500, "pilimit": 2}))
     pages = sorted((data.get("query") or {}).get("pages", {}).values(), key=lambda p: p.get("index", 99))
     if not pages:
         raise ToolError("Nothing found on Wikipedia.")
     return {"source": "Wikipedia", "results": [{"title": p.get("title"), "url": p.get("fullurl", ""),
-                                                "summary": _clip(p.get("extract"), 900)} for p in pages]}
+                                                "summary": _clip(p.get("extract"), 900),
+                                                "image": picture((p.get("thumbnail") or {}).get("source", ""))}
+                                               for p in pages]}
 
 
 def web_search(query: str) -> dict:
@@ -255,8 +287,11 @@ def web_search(query: str) -> dict:
             log.warning("%s search failed: %s", name, e)
             continue
         if results:
-            return {"source": name, "results": [{"title": _clip(r["title"], 120), "url": r["url"],
-                                                 "snippet": _clip(r["snippet"], 280)} for r in results]}
+            out = {"source": name, "results": [{"title": _clip(r["title"], 120), "url": r["url"],
+                                                "snippet": _clip(r["snippet"], 280)} for r in results]}
+            if results[0].get("images"):
+                out["images"] = results[0]["images"]
+            return out
     # Search engines unavailable: combine recent news with Wikipedia.
     fallback: dict = {"source": "News and Wikipedia (web search unavailable)"}
     for name, tool in (("news", news), ("wikipedia", wikipedia)):
@@ -312,6 +347,13 @@ def office_holder(office: str) -> dict:
                    "url": page.get("fullurl", "")}
             if since and _wiki_plain(since.group(1)):
                 out["since"] = _wiki_plain(since.group(1))
+            try:  # a photo of the person is a nice extra, never required
+                person = wikipedia(holder)["results"][0]
+                if _office_words(person["title"]) == _office_words(holder):
+                    out["person"] = {"title": person["title"], "url": person["url"], "image": person["image"],
+                                     "summary": _clip(person["summary"], 200)}
+            except (ToolError, KeyError, IndexError):
+                pass
             return out
     raise ToolError("The current holder of that office wasn't found. Use the full official title, or try news.")
 
@@ -325,7 +367,8 @@ def read_webpage(url: str) -> dict:
     page = _PageText()
     page.feed(text)
     return {"source": urlsplit(url).hostname, "url": url, "title": _clip(page.title, 150),
-            "description": _clip(page.description, 300), "text": _clip(" ".join(page.chunks), MAX_PAGE_CHARS)}
+            "description": _clip(page.description, 300), "text": _clip(" ".join(page.chunks), MAX_PAGE_CHARS),
+            "image": picture(urljoin(url, page.image)) if page.image else ""}
 
 
 ALIASES = {"nifty": "^NSEI", "nifty 50": "^NSEI", "nifty50": "^NSEI", "sensex": "^BSESN", "bse sensex": "^BSESN",
@@ -386,7 +429,8 @@ TOOL_SPECS = [
           "websites, or any name you do not know for certain.", "query", "Search words"),
     _spec("read_webpage", "Read a web page the user named, or one returned by web_search.", "url", "Full https URL"),
     _spec("news", "Latest news headlines about a topic.", "query", "Topic"),
-    _spec("wikipedia", "Background facts about a person, place or thing.", "topic", "Topic"),
+    _spec("wikipedia", "Background facts about a person, place or thing. Also shows its picture and link on screen.",
+          "topic", "Topic"),
     _spec("office_holder", "Who currently holds a public office (president, prime minister, chief minister, "
           "governor, mayor...).", "office", "Full title, e.g. 'President of the United States', "
           "'Chief Minister of Telangana'"),
@@ -463,6 +507,8 @@ class Session:
         self.guessable = {f"{n}.{tld}" for n in names for tld in ("com", "in")}
         self.result_urls: set[str] = set()
         self.sources: list[dict] = []
+        self.cards: list[dict] = []  # links (with pictures) to show on screen
+        self.images: list[str] = []  # extra pictures to show on screen
 
     def may_read(self, url: str) -> bool:
         parts = urlsplit(url)
@@ -493,6 +539,33 @@ class Session:
             if host and url not in [s["url"] for s in self.sources] and len(self.sources) < 5:
                 self.sources.append({"name": host, "url": url})
 
+    def _show(self, tool: str, data: dict) -> None:
+        """Pick links and pictures from a result. They come only from fetched data, never from the model."""
+        def card(title, url, snippet="", image=""):
+            if str(url).startswith(("https://", "http://")) and len(self.cards) < 4 and \
+                    url not in [c["url"] for c in self.cards]:
+                self.cards.append({"title": _clip(title, 120) or url, "url": url, "snippet": _clip(snippet, 160),
+                                   "image": picture(image)})
+
+        if tool == "read_webpage":
+            card(data.get("title"), data.get("url"), data.get("description"), data.get("image"))
+        elif tool == "office_holder" and data.get("person"):
+            p = data["person"]
+            card(p["title"], p["url"], p.get("summary"), p.get("image"))
+        elif tool == "market_quote":
+            change = f" ({data['change_percent']:+}%)" if "change_percent" in data else ""
+            card(data.get("name"), data.get("url"),
+                 f"{data.get('price'):,} {data.get('currency') or ''}{change} · {data.get('as_of_utc')}")
+        elif tool in ("web_search", "wikipedia"):
+            for r in (data.get("results") or [])[:3]:
+                card(r.get("title"), r.get("url"), r.get("snippet") or r.get("summary"), r.get("image"))
+            for key in ("wikipedia",):
+                if key in data:
+                    self._show("wikipedia", data[key])
+        for url in data.get("images", []):
+            if len(self.images) < 4 and picture(url) and url not in self.images:
+                self.images.append(url)
+
     def run(self, tool: str, arguments: str) -> str:
         """Run one tool call. Always returns JSON text; failures are reported to the model, never raised."""
         try:
@@ -510,7 +583,8 @@ class Session:
             data = cached_call(tool, function, value)
             self._remember(data)
             self._cite(data)
-            return json.dumps(data, ensure_ascii=False)[:5000]
+            self._show(tool, data)
+            return json.dumps(_without_pictures(data), ensure_ascii=False)[:5000]
         except ToolError as e:
             return json.dumps({"error": str(e)})
         except Exception:  # a broken data source must never break the answer

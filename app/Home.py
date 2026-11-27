@@ -4,6 +4,7 @@ import uuid
 import streamlit as st
 
 import auth
+import cards
 import chat_style
 import pipeline
 import player
@@ -77,6 +78,7 @@ def reply_area(turn_id: str):
 def reply_end(turn: dict, autoplay: bool = False) -> None:
     st.audio(turn["wav"], format="audio/wav", autoplay=autoplay)
     st.caption(f"AI-generated voice: {turn['voice']}")
+    cards.show(turn.get("cards"), turn.get("images"))
     show_sources(turn.get("sources"))
 
 
@@ -149,7 +151,7 @@ def process(audio_bytes=None, text=None):
         status.update(label=timing, state="complete")
         answer_slot.write(result.answer)
         turn = {"id": turn_id, "q": result.question, "a": result.answer, "wav": result.audio_wav, "voice": voice,
-                "timing": timing, "sources": result.sources}
+                "timing": timing, "sources": result.sources, "cards": result.cards, "images": result.images}
         # In fast mode the reply has already been played piece by piece: the player is for replaying it.
         reply_end(turn, autoplay=not fast)
     ss["history"] += [{"role": "user", "content": result.question},

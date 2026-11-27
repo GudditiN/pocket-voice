@@ -79,6 +79,7 @@ with a live dashboard showing CPU, memory and latency.
 | [app/tts.py](app/tts.py) | PocketTTS model, named voice profiles, tuning |
 | [app/asr.py](app/asr.py), [app/llm.py](app/llm.py) | Groq calls (optional local Whisper) and the tool-calling loop |
 | [app/sentences.py](app/sentences.py), [app/player.py](app/player.py) | Cut the streaming answer into sentences; play audio pieces in the browser |
+| [app/cards.py](app/cards.py) | Link cards and pictures shown with an answer |
 | [app/live.py](app/live.py) | Live-data tools: search, web pages, news, office holders, markets, weather |
 | [app/audio.py](app/audio.py) | Decode, trim, level check and boost |
 | [app/monitor.py](app/monitor.py), [app/store.py](app/store.py) | psutil sampling and SQLite storage |
@@ -213,6 +214,14 @@ your question → model picks tools → search / read / look up → model writes
 **Get a Tavily key (recommended).** DuckDuckGo often blocks automated searches. [Tavily](https://tavily.com) lists 1,000 free searches a month with no card. Add it as `TAVILY_API_KEY` (Codespaces secret or `.env`) and restart.
 
 Each answer lists its **sources** as links. Check anything important.
+
+### 🖼️ Links and pictures on screen
+With web search on, the answer is **spoken** while the screen **shows** what was found:
+- **Link cards** with a title, short description and picture (up to 4)
+- **Pictures** from Wikipedia, a page's preview image, or Tavily image results
+- Try: "Show me the Taj Mahal", "What is sniffynose.com?", "Who is the Prime Minister of India?"
+
+The voice never reads web addresses aloud. Links and pictures come only from fetched data, never from the model's own text. Pictures load in your browser straight from the source site, which can see that your browser requested them. They may be copyrighted: check before reusing them.
 
 **Caching.** Repeat lookups are answered from a small in-memory cache, which is faster and easier on free rate limits: market prices for 1 minute, news 5 minutes, search, pages and weather 10 minutes, Wikipedia and office holders 1 hour. It holds up to 200 results and empties on restart. **Redis isn't needed** for a single app; it would only help if you ran several copies sharing one cache, or needed the cache to survive restarts.
 

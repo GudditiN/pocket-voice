@@ -31,6 +31,8 @@ class TurnResult:
     out_audio_s: float | None = None
     timings_ms: dict = field(default_factory=dict)
     sources: list = field(default_factory=list)  # web pages used for the answer: [{'name','url'}]
+    cards: list = field(default_factory=list)  # links to show: [{'title','url','snippet','image'}]
+    images: list = field(default_factory=list)  # extra picture addresses to show
     first_audio_ms: float | None = None  # fast replies: time until the first spoken piece was ready
 
 
@@ -129,6 +131,7 @@ def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str 
         else:
             _reply_while_writing(r, usage, history, system_prompt, use_web, profile, t0, on_status, on_text, on_audio)
         r.sources = usage.get("sources", [])
+        r.cards, r.images = usage.get("cards", []), usage.get("images", [])
         r.status = "success"
         on_status("Completed")
     except AppError as e:
