@@ -67,3 +67,48 @@ def test_original_recording_is_available_only_for_real_voices():
     d.mkdir(parents=True)
     (d / "reference.wav").write_bytes(b"RIFF")
     assert tts.reference_wav("a") == b"RIFF"
+
+
+def test_own_recording_gives_a_realistic_ceiling():
+    assert similarity.own_score(voice(seconds=20.0)) >= 80  # long halves: the made-up words average out
+    assert similarity.own_score(voice(seconds=1.2)) is None
+
+
+def make_voice_files(recording):
+    from config import get_settings
+
+    d = get_settings().profiles_dir / "me"
+    d.mkdir(parents=True)
+    (d / "profile.safetensors").write_bytes(b"x")
+    (d / "reference.wav").write_bytes(recording)
+
+
+def test_closest_settings_are_ranked_first(monkeypatch):
+    make_voice_files(voice())
+    spoken, progress = [], []
+
+    def fake_speak(text, profile=None, tuning=None):  # only expression 0.4 sounds like the recording
+        spoken.append(tuning)
+        mine = tuning["temp"] == 0.4
+        return voice(seed=len(spoken), **({} if mine else {"pitch": 210, "resonances": (800, 2100, 3300)})), 6.0
+
+    monkeypatch.setattr(tts, "synthesize", fake_speak)
+    tts.save_tuning({"pitch": 2, "clean": 3, "speed": 1.08}, voice="me")
+    found = tts.closest_settings("hi", "me", on_progress=lambda done, total: progress.append((done, total)))
+    assert found[0]["tuning"]["temp"] == 0.4 and found[0]["score"] > found[-1]["score"] + 30
+    assert found[0]["low"] <= found[0]["score"] <= found[0]["high"]
+    assert len(spoken) == 12 and progress[-1] == (12, 12)
+    assert all(t["pitch"] == 0 and t["clean"] == 0 and t["speed"] == 1.08 for t in spoken)
+
+
+def test_closest_settings_corrects_a_steady_pitch_difference(monkeypatch):
+    make_voice_files(voice(pitch=120))
+    low = voice(pitch=120 * 2 ** (-2 / 12), resonances=tuple(r * 2 ** (-2 / 12) for r in (600, 1500, 2600)))
+    monkeypatch.setattr(tts, "synthesize", lambda text, profile=None, tuning=None: (low, 6.0))
+    found = tts.closest_settings("hi", "me", runs=1)
+    assert found[0]["tuning"]["pitch"] == 2.0 and found[0]["score"] > found[1]["score"] + 2
+
+
+def test_closest_settings_needs_the_recording():
+    with pytest.raises(AppError, match="recording"):
+        tts.closest_settings("hi", "missing")

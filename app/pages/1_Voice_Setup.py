@@ -263,6 +263,53 @@ def show_match(item: dict, closest: bool) -> None:
     st.caption(detail)
 
 
+@st.cache_data(show_spinner=False, max_entries=16)
+def own_ceiling(wav: bytes) -> int | None:
+    try:
+        return similarity.own_score(wav)
+    except AppError:
+        return None
+
+
+def find_closest(voice: str, text: str) -> None:
+    """Button that searches the settings for the version nearest to the original recording."""
+    runs = len(tts.MATCH_TRIALS) * 2
+    if st.button("🎯 Find the closest match", type="primary",
+                 help=f"Speaks the sentence {runs} times with different settings and ranks them. Can take a few minutes."):
+        ss.pop("closest", None)
+        bar = st.progress(0.0, text="Trying settings…")
+        try:
+            found = tts.closest_settings(
+                text, voice, on_progress=lambda done, total: bar.progress(done / total, text=f"Take {done} of {total}…"))
+            ss["closest"] = {"voice": voice, "items": found[:3]}
+        except AppError as e:
+            st.error(f"{e.message}  \n_Category: `{e.category}`_")
+        bar.empty()
+    found = ss.get("closest")
+    if found and found["voice"] == voice:
+        st.markdown("**Closest versions** (average of two takes)")
+        for i, (column, item) in enumerate(zip(st.columns(len(found["items"])), found["items"])):
+            with column:
+                st.markdown(("⭐ " if i == 0 else "") + f"**{item['score']}/100**")
+                st.audio(item["wav"], format="audio/wav")
+                st.caption(f"takes scored {item['low']} to {item['high']} · {describe(item['tuning'])}")
+            if column.button("Use this", key=f"closest_{i}"):
+                tts.save_tuning(item["tuning"], voice=voice)
+                ss.pop("closest", None)
+                ss.pop("compare", None)
+                ss["flash"] = f"Saved for '{voice}': {describe(item['tuning'])}."
+                st.rerun()
+    with st.expander("How to get an even closer match"):
+        st.markdown(
+            "The recording matters most, because the voice copies it, noise and all.\n\n"
+            "1. Record in a quiet, soft room (curtains and furniture reduce echo), a hand's width from the mic.\n"
+            "2. Speak 15–20 s in your everyday tone, the way you want the assistant to talk.\n"
+            "3. Keep three takes and aim for a recording score of 85 or more.\n"
+            "4. Leave **Reduce background noise** off unless you can hear noise: cleaning also changes your voice.\n"
+            "5. Create it under a new name, run **Find the closest match**, and keep the better voice.\n"
+            "6. Keep pitch at 0 and cleanup off unless your ears prefer otherwise.")
+
+
 if profiles:
     st.subheader("Choose how a voice sounds")
     st.caption("Compare AI versions with your original recording and keep what sounds right. Each voice keeps its "
@@ -279,6 +326,10 @@ if profiles:
     if original:
         st.markdown("**Your original recording**")
         st.audio(original, format="audio/wav")
+        ceiling = own_ceiling(original)
+        if ceiling is not None:
+            st.caption(f"For scale: one half of this recording scores **{ceiling}/100** against the other half. An AI "
+                       "version near that number is about as close as this score can tell.")
     else:
         st.caption("The original recording of this voice isn't stored, so no match score is shown.")
     saved = tts.get_tuning(target)
@@ -289,6 +340,8 @@ if profiles:
         ss.pop("compare", None)
         ss["flash"] = f"'{target}' is back to the default sound."
         st.rerun()
+    if original:
+        find_closest(target, line)
     group = st.radio("What to compare", [CHECK, STYLE, *effects.VARIATIONS, MIX], horizontal=True, key="compare_group")
     custom = None
     if group == MIX:

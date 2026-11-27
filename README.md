@@ -372,6 +372,8 @@ The running app uses the new active profile from the next answer.
 
 **Match score.** Every AI version is scored from 0 to 100 against your original recording, and the closest is marked ⭐. It compares **tone** (the shape of the sound) and **pitch** using plain numpy, with no extra model. It ignores words, speaking speed and naturalness, and it is not speaker verification. Its scale was set with computer-made system voices, so judge **differences between versions** rather than the number alone, and let your ears decide. Background noise and a short test sentence lower reliability.
 
+**Closer match.** **🎯 Find the closest match** speaks your sentence 12 times (three expression levels × two quality levels, twice each), ranks the settings by average score, corrects a steady pitch difference if that helps, and offers the top three. It can take a few minutes on a CPU. Under your original recording, the app also shows how one half of it scores against the other: a realistic ceiling for the AI voice. Beyond settings, the **recording** matters most: quiet room, close mic, 15–20 s in your everyday tone, noise reduction off unless needed. To go further than that, see [Train or fine-tune](#-train-or-fine-tune-advanced).
+
 **Each voice keeps its own choice**, saved with it, and it wins over `.env`. A newly created voice is selected here automatically. **↺ Reset** returns that voice to the defaults. Nothing needs editing in files.
 
 **From the command line:**

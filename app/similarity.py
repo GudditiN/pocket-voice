@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from audio import _mono_samples, reduce_noise, wav_info
+from audio import _mono_samples, float_to_wav, reduce_noise, wav_info
 from errors import AppError
 
 BANDS, COEFFS = 32, 20
@@ -88,3 +88,18 @@ def compare(original: dict, other: dict) -> dict:
                else "Different")
     return {"score": round(score), "verdict": verdict, "tone": round(tone),
             "pitch": None if pitch is None else round(pitch), "semitones": semitones}
+
+
+def own_score(wav: bytes) -> int | None:
+    """How the first half of a recording scores against its second half: the same person, microphone and room.
+
+    A realistic ceiling for an AI version of that recording. None if a half has too little speech.
+    """
+    wav_info(wav)
+    x, rate = _mono_samples(wav)
+    half = x.size // 2
+    try:
+        first, second = (profile(float_to_wav(part.astype(np.float32), rate)) for part in (x[:half], x[half:]))
+    except AppError:
+        return None
+    return compare(first, second)["score"]

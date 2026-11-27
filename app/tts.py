@@ -19,6 +19,7 @@ import time
 import numpy as np
 
 import effects
+import similarity
 from audio import SILENCE_RMS, float_to_wav, normalize_wav, reduce_noise, to_dbfs, trim_wav, wav_info
 from config import get_settings
 from errors import AppError
@@ -178,6 +179,51 @@ def variation_choices(group: str, voice: str | None = None) -> list[tuple[str, d
     key, options = effects.VARIATIONS[group]
     current = get_tuning(voice)
     return [(label, clean_tuning({**current, key: value})) for label, value in options]
+
+
+# (expression, quality steps) tried when searching for the closest match
+MATCH_TRIALS = [(temp, steps) for temp in (0.2, 0.4, 0.7) for steps in (1, 3)]
+
+
+def closest_settings(text: str, name: str, runs: int = 2, on_progress=lambda done, total: None) -> list[dict]:
+    """Try several settings and rank them by how well they match the voice's original recording, best first.
+
+    Each setting is spoken `runs` times because every take sounds a little different; the score is the average.
+    Speed is left as the user chose it, and noise cleanup is off because it moves away from the recording.
+    """
+    original = reference_wav(name)
+    if not original:
+        raise AppError("no_profile", "The original recording of this voice isn't stored, so it can't be compared.")
+    target = similarity.profile(original)
+    base = {**get_tuning(name), "pitch": 0.0, "clean": 0}
+
+    def judge(tuning: dict, clips: list[bytes]) -> dict:
+        matches = [similarity.compare(target, similarity.profile(clip)) for clip in clips]
+        mean = sum(m["score"] for m in matches) / len(matches)
+        typical = min(range(len(clips)), key=lambda i: abs(matches[i]["score"] - mean))
+        return {"tuning": tuning, "score": round(mean), "low": min(m["score"] for m in matches),
+                "high": max(m["score"] for m in matches), "wav": clips[typical], "match": matches[typical],
+                "clips": clips, "semitones": [m["semitones"] for m in matches if m["semitones"] is not None]}
+
+    results, total = [], len(MATCH_TRIALS) * runs
+    for i, (temp, steps) in enumerate(MATCH_TRIALS):
+        tuning = clean_tuning({**base, "temp": temp, "steps": steps})
+        clips = []
+        for run in range(runs):
+            clips.append(synthesize(text, profile=name, tuning=tuning)[0])
+            on_progress(i * runs + run + 1, total)
+        results.append(judge(tuning, clips))
+    results.sort(key=lambda r: -r["score"])
+    best = results[0]
+    if best["semitones"]:  # if the best one is consistently too high or low, see whether correcting that helps
+        shift = -round(float(np.median(best["semitones"])) * 2) / 2
+        if shift:
+            tuning = clean_tuning({**best["tuning"], "pitch": shift})
+            only_pitch = {**effects.NEUTRAL, "pitch": tuning["pitch"]}
+            corrected = judge(tuning, [effects.process_wav(clip, only_pitch)[0] for clip in best["clips"]])
+            if corrected["score"] > best["score"] + 2:  # a real gain, not chance
+                results.insert(0, corrected)
+    return results
 
 
 # ---------------------------------------------------------------- profiles
