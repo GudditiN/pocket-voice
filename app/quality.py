@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import math
+import operator
 import sys
 import wave
 from array import array
@@ -45,7 +46,7 @@ def _levels(samples: array, size: int) -> list[float]:
     out = []
     for i in range(0, len(samples) - size + 1, size):
         frame = samples[i : i + size]
-        out.append(math.sqrt(math.sumprod(frame, frame) / size) / 32768.0)
+        out.append(math.sqrt(sum(map(operator.mul, frame, frame)) / size) / 32768.0)
     return out or [0.0]
 
 

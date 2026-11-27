@@ -273,7 +273,7 @@ Send people the link and the **password to share**. Press `Ctrl+C` to close the 
 
 | Page | What to do |
 |---|---|
-| **Voice Setup** | See your voices: **▶ Test**, **⭐ Make default** or **🗑 delete** each one. To add one: name it, pick a reading passage, tick consent, record or upload, keep the takes you like, click **Create voice**. **Compare styles** picks how it speaks. |
+| **Voice Setup** | See your voices: **▶ Test**, **⭐ Make default** or **🗑 delete** each one. To add one: name it, pick a reading passage, tick consent, record or upload, keep the takes you like, click **Create voice**. **Compare** picks style, pitch, speed and noise cleanup. |
 | **Assistant** | Choose **Answer in this voice**. Type in the chat box at the bottom, **or** tap the mic on its right: a *Listening* banner appears, tap **✓** to send or **✕** to cancel. Each answer shows which voice spoke it. Edit the system prompt or clear the conversation in the sidebar. |
 | **Dashboard** | Choose 15 min, 1 hour or 24 hours. **System** shows resources; **Voice & usage** shows latency, requests and errors. |
 
@@ -356,7 +356,17 @@ The running app uses the new active profile from the next answer.
 
 ## Step 4 · Test and compare
 
-**In the app:** Voice Setup → *Find the best-sounding settings* → **Compare styles** plays one sentence with your current settings and as *Steady*, *Natural* and *Expressive*. Click **Use this** to save one. Tuning lines in `.env` win over a saved choice, so remove them first.
+**In the app:** Voice Setup → *Find the best-sounding settings*. Pick what to compare, click **Compare**, listen, then **Use this**:
+
+| Compare | Choices |
+|---|---|
+| Speaking style | Current, Steady, Natural, Expressive |
+| Pitch | Much deeper to much higher (±3 semitones) |
+| Speed | Slow to fast |
+| Noise cleanup | Off, Light, Medium, Strong |
+| Mix your own | Sliders for all settings, then **Preview** |
+
+**Each voice keeps its own choice**, saved with it, and it wins over `.env`. A newly created voice is selected here automatically. **↺ Reset** returns that voice to the defaults. Nothing needs editing in files.
 
 **From the command line:**
 
@@ -383,6 +393,11 @@ Download the `compare_*.wav` files from the Codespaces file explorer. (`*.wav` i
 | `temp` | 0.3 | 0.05 – 1.5 | Higher is **more expressive** and more varied |
 | `steps` (sampler decode steps) | 1 | 1 – 8 | More steps can improve **quality** but are slower |
 | `eos_threshold` | −4.0 | −10 – 5 | End-of-speech detection. **Lower** finishes earlier (fixes rambling); **higher** continues longer (fixes cut-off endings) |
+| `pitch` | 0 | −4 – 4 | Semitones deeper or higher. Beyond ±1.5 it sounds less like you |
+| `speed` | 1.0 | 0.75 – 1.3 | Slower or faster, without changing pitch |
+| `clean` | off | off, light, medium, strong | Removes steady noise (hiss, hum) from the **spoken replies** |
+
+`pitch`, `speed` and `clean` process the finished audio, so with **Fast reply** each sentence is completed before it plays.
 
 **Option 1: set them in `.env`** (or as environment variables), then restart the app:
 ```ini
@@ -390,9 +405,9 @@ POCKET_TEMP=0.5
 POCKET_STEPS=2
 POCKET_EOS_THRESHOLD=-4
 ```
-These **override** the saved settings below, one setting at a time. Leave a line blank to use the saved value or default.
+These apply to voices you **haven't tuned in the app**, and override the shared file below, one setting at a time. Pitch, speed and noise cleanup are chosen in the app only.
 
-**Option 2: save your choice** (applies from the next answer, no restart; ignored for any setting that is set in `.env`):
+**Option 2: save a choice from the command line** for one voice (add `voice="name"`), or for all untuned voices (applies from the next answer, no restart):
 ```bash
 uv run python -c 'import sys; sys.path.insert(0,"app"); import tts; print(tts.save_tuning({"temp": 0.6, "steps": 2}))'
 ```
@@ -400,7 +415,7 @@ Reset to defaults:
 ```bash
 uv run python -c 'import sys; sys.path.insert(0,"app"); import tts; tts.reset_tuning(); print(tts.get_tuning())'
 ```
-Settings you leave out of `save_tuning` return to their defaults. They are stored in `data/voice/tuning.json`. Kyutai's examples: `steps 5, temp 0.5` for higher quality; `temp 1.0` for more expression.
+Settings you leave out of `save_tuning` return to their defaults. A voice's choice is stored in `data/voice/profiles/<name>/tuning.json`, the shared one in `data/voice/tuning.json`. Kyutai's examples: `steps 5, temp 0.5` for higher quality; `temp 1.0` for more expression.
 
 ## Step 6 · Clear, delete or reset a voice
 
@@ -561,7 +576,7 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | `WEB_DETAILS` | `1` | Open the top 2 search results for more detail (`0` = faster) |
 | `LIVE_REGION` | `IN` | Country for news and search |
 | `APP_TIMEZONE` | `Asia/Kolkata` | Time zone for today's date |
-| `POCKET_TEMP`, `POCKET_STEPS`, `POCKET_EOS_THRESHOLD` | blank (0.3, 1, −4) | Voice tuning: see [Step 5](#step-5--tune-how-it-speaks) |
+| `POCKET_TEMP`, `POCKET_STEPS`, `POCKET_EOS_THRESHOLD` | blank (0.3, 1, −4) | Starting values for voices not tuned in the app: see [Step 5](#step-5--tune-how-it-speaks) |
 | `DATA_DIR` | `./data` | Voices and database location |
 | `RETENTION_DAYS` | `14` | Age limit for samples and errors |
 | `SAMPLE_INTERVAL_S` | `5` | Monitoring interval |
@@ -692,7 +707,7 @@ The benchmark saves `data/benchmark.json`.
 ## ⚠️ Known limitations
 
 - Needs internet for Groq, and is subject to its rate limits.
-- The app offers three ready-made speaking styles; other tuning values use `.env` or the commands in Step 5.
+- Pitch and speed are audio processing, not a new voice: large changes sound artificial. The end-of-speech setting has no slider (use `.env`, for voices not tuned in the app).
 - Replies are fast but not a live conversation: press the mic to talk; you can't interrupt by speaking.
 - Public links are temporary testing tunnels with shared passwords (no individual user accounts).
 - One request is spoken at a time (single-user demo).

@@ -5,6 +5,7 @@ from datetime import datetime
 
 import streamlit as st
 
+import effects
 import quality
 import tts
 import ui
@@ -14,7 +15,7 @@ from errors import AppError
 
 ui.setup_page("Voice Setup", "🎤")
 ui.hero("🎤 Voices", "Keep several voice profiles, test them, and choose which one speaks.")
-ui.flow(["1 Record takes", "2 Build the voice", "3 Compare styles", "4 Use it"])
+ui.flow(["1 Record takes", "2 Build the voice", "3 Choose its sound", "4 Use it"])
 st.caption("PocketTTS conditions on a short recording and saves a reusable *voice profile*. This is not model "
            "training. Recordings and profiles stay on this machine, are never served by URL, and are git-ignored.")
 
@@ -26,6 +27,11 @@ manage = ui.voice_admin()
 profiles = tts.list_profiles()
 names = [p["name"] for p in profiles]
 active = tts.active_profile()
+
+def describe(tuning: dict) -> str:
+    return (f"expression {tuning['temp']:.2f} · steps {tuning['steps']} · pitch {tuning['pitch']:+.1f} · "
+            f"speed ×{tuning['speed']:.2f} · cleanup {effects.CLEAN_LEVELS[tuning['clean']]}")
+
 
 # ---------------------------------------------------------------- your voices
 st.subheader("Your voices")
@@ -39,6 +45,8 @@ else:
             info_col, test_col, default_col, delete_col = st.columns([4, 1, 2, 1])
             info_col.markdown(f"**{name}**" + ("  ·  ⭐ default" if name == active else ""))
             info_col.caption(f"created {datetime.fromtimestamp(p['created']):%Y-%m-%d %H:%M} · {p['kb']:.0f} KB")
+            if tts.is_tuned(name):
+                info_col.caption(describe(tts.get_tuning(name)))
             test = test_col.button("▶ Test", key=f"test_{name}")
             if manage:
                 if default_col.button("⭐ Make default", key=f"default_{name}", disabled=name == active):
@@ -64,43 +72,6 @@ else:
 
 if not manage:
     st.stop()  # visitors on the shared link can listen, but not change voices
-
-# ---------------------------------------------------------------- compare speaking styles
-if profiles:
-    st.subheader("Find the best-sounding settings")
-    st.caption("Hear one sentence in several styles, then keep the one that sounds most like you.")
-    voice_col, line_col = st.columns([1, 3])
-    target = voice_col.selectbox("Voice", names, index=names.index(active), key="compare_voice")
-    line = line_col.text_input("Sentence", "Honestly, I think this sounds a lot like me. What do you think?",
-                               key="compare_line")
-    if tts.env_overrides():
-        st.warning(f"Your environment or `.env` sets **{', '.join(tts.env_overrides())}**. Those win over the style "
-                   "you pick here: delete those lines and restart to use your choice.")
-    if st.button("🎚️ Compare styles"):
-        results = []
-        try:
-            with st.spinner("Speaking the sentence in each style…"):
-                for label, tuning in tts.style_choices():
-                    t = time.perf_counter()
-                    out, secs = tts.synthesize(line, profile=target, tuning=tuning)
-                    results.append({"label": label, "tuning": tuning, "wav": out, "secs": secs,
-                                    "took": time.perf_counter() - t})
-        except AppError as e:
-            st.error(f"{e.message}  \n_Category: `{e.category}`_")
-        ss["compare"] = results
-    results = ss.get("compare") or []
-    if results:
-        for column, r in zip(st.columns(len(results)), results):
-            column.markdown(f"**{r['label']}**")
-            column.audio(r["wav"], format="audio/wav")
-            column.caption(f"expression {r['tuning']['temp']} · steps {r['tuning']['steps']} · "
-                           f"made in {r['took']:.1f}s for {r['secs']:.1f}s of audio")
-            if r["label"] != "Current" and column.button("Use this", key=f"use_{r['label']}"):
-                tts.save_tuning(r["tuning"])
-                ss.pop("compare", None)
-                ss["flash"] = f"Saved the '{r['label']}' style." + (
-                    " Remove the tuning lines from .env for it to apply." if tts.env_overrides() else "")
-                st.rerun()
 
 # ---------------------------------------------------------------- add or replace
 PASSAGES = {
@@ -231,9 +202,89 @@ if st.button("Create voice", type="primary", disabled=not (wav and consent and n
             note = (f" The first {res['duration_s']:.0f}s of speech from the {res['original_s']:.0f}s recording were used."
                     if res["trimmed"] else "")
             ss.pop("takes", None)  # the kept recordings are no longer needed
-            ss["flash"] = f"Voice '{res['name']}' saved in {time.perf_counter() - t:.1f}s.{note}"
+            ss["tune_next"] = res["name"]
+            ss.pop("compare", None)
+            ss["flash"] = (f"Voice '{res['name']}' saved in {time.perf_counter() - t:.1f}s.{note} "
+                           "Next: choose how it sounds at the bottom of this page.")
             st.rerun()
         except AppError as e:
             st.error(f"{e.message}  \n_Category: `{e.category}`_")
 if not consent and wav:
     st.caption("Tick the consent box to enable voice creation.")
+
+# ---------------------------------------------------------------- step 3: how the voice sounds
+STYLE, MIX = "Speaking style", "Mix your own"
+
+
+def speak_variations(group: str, text: str, voice: str, custom: dict | None) -> list[dict]:
+    """One audio clip per choice. Pitch, speed and cleanup reuse one take, so only that setting differs."""
+    if group == STYLE:
+        choices = tts.style_choices(voice)
+    elif group == MIX:
+        choices = [("Your mix", tts.clean_tuning(custom))]
+    else:
+        choices = tts.variation_choices(group, voice)
+        base, _ = tts.synthesize(text, profile=voice, tuning={**tts.get_tuning(voice), **effects.NEUTRAL})
+    items = []
+    for label, tuning in choices:
+        if group in effects.VARIATIONS:
+            out, secs = effects.process_wav(base, tuning)
+        else:
+            out, secs = tts.synthesize(text, profile=voice, tuning=tuning)
+        items.append({"label": label, "tuning": tuning, "wav": out, "secs": secs})
+    return items
+
+
+if profiles:
+    st.subheader("Choose how a voice sounds")
+    st.caption("Hear one sentence in different ways and keep what sounds right. Each voice keeps its own choice.")
+    if "tune_next" in ss:  # a voice that was just created
+        ss["compare_voice"] = ss.pop("tune_next")
+    if ss.get("compare_voice") not in names:
+        ss["compare_voice"] = active
+    voice_col, line_col = st.columns([1, 3])
+    target = voice_col.selectbox("Voice", names, key="compare_voice")
+    line = line_col.text_input("Sentence", "Honestly, I think this sounds a lot like me. What do you think?",
+                               key="compare_line")
+    saved = tts.get_tuning(target)
+    now_col, reset_col = st.columns([5, 1])
+    now_col.caption(f"**{target}** now: {describe(saved)}")
+    if reset_col.button("↺ Reset", disabled=not tts.is_tuned(target)):
+        tts.reset_tuning(target)
+        ss.pop("compare", None)
+        ss["flash"] = f"'{target}' is back to the default sound."
+        st.rerun()
+    group = st.radio("What to compare", [STYLE, *effects.VARIATIONS, MIX], horizontal=True, key="compare_group")
+    custom = None
+    if group == MIX:
+        left, right = st.columns(2)
+        custom = {
+            **saved,
+            "temp": left.slider("Expression", 0.05, 1.5, float(saved["temp"]), 0.05),
+            "steps": left.slider("Quality steps (higher is slower)", 1, 8, saved["steps"]),
+            "pitch": right.slider("Pitch (lower ← → higher)", -4.0, 4.0, float(saved["pitch"]), 0.5),
+            "speed": right.slider("Speed", 0.75, 1.3, float(saved["speed"]), 0.01),
+            "clean": effects.CLEAN_LEVELS.index(right.select_slider(
+                "Noise cleanup", options=effects.CLEAN_LEVELS, value=effects.CLEAN_LEVELS[saved["clean"]])),
+        }
+    if st.button("🎚️ Preview" if group == MIX else "🎚️ Compare"):
+        ss.pop("compare", None)
+        try:
+            with st.spinner("Speaking the sentence…"):
+                ss["compare"] = {"voice": target, "group": group,
+                                 "items": speak_variations(group, line, target, custom)}
+        except AppError as e:
+            st.error(f"{e.message}  \n_Category: `{e.category}`_")
+    shown = ss.get("compare")
+    if shown and shown["group"] == group and shown["voice"] == target:
+        for i, (column, item) in enumerate(zip(st.columns(len(shown["items"])), shown["items"])):
+            column.markdown(f"**{item['label']}**")
+            column.audio(item["wav"], format="audio/wav")
+            column.caption(describe(item["tuning"]))
+            if item["label"] != "Current" and column.button("Use this", key=f"use_{i}"):
+                tts.save_tuning(item["tuning"], voice=target)
+                ss.pop("compare", None)
+                ss["flash"] = f"Saved for '{target}': {describe(item['tuning'])}."
+                st.rerun()
+    st.caption("Pitch changes of more than 1.5 sound less like you. With pitch, speed or cleanup on, each sentence "
+               "is finished before it plays, so replies start a little later.")

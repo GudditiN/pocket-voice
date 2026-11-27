@@ -51,7 +51,7 @@ def test_legacy_single_profile_is_migrated():
 def test_tuning_defaults_clamp_save_reset():
     assert tts.get_tuning() == tts.DEFAULT_TUNING
     saved = tts.save_tuning({"temp": 9, "steps": 2.6, "eos_threshold": -100})
-    assert saved == {"temp": 1.5, "steps": 3, "eos_threshold": -10.0}
+    assert saved == {**tts.DEFAULT_TUNING, "temp": 1.5, "steps": 3, "eos_threshold": -10.0}
     assert tts.get_tuning() == saved
     assert tts.clean_tuning({"temp": "bad"})["temp"] == tts.DEFAULT_TUNING["temp"]
     tts.reset_tuning()
@@ -62,7 +62,7 @@ def test_env_overrides_saved_tuning_per_setting(monkeypatch):
     tts.save_tuning({"temp": 0.9, "steps": 4})
     monkeypatch.setenv("POCKET_TEMP", "0.5")
     monkeypatch.setenv("POCKET_EOS_THRESHOLD", "-3")
-    assert tts.get_tuning() == {"temp": 0.5, "steps": 4, "eos_threshold": -3.0}
+    assert tts.get_tuning() == {**tts.DEFAULT_TUNING, "temp": 0.5, "steps": 4, "eos_threshold": -3.0}
     monkeypatch.setenv("POCKET_STEPS", "99")  # clamped to the allowed range
     assert tts.get_tuning()["steps"] == 8
 
@@ -94,9 +94,52 @@ def test_synthesize_applies_tuning_and_profile(monkeypatch):
     assert fake.seen[2:] == (0.5, 1, -4.0)
 
 
-def test_style_choices_and_env_overrides(monkeypatch):
-    names = [name for name, _ in tts.style_choices()]
-    assert names == ["Current", "Steady", "Natural", "Expressive"] and tts.env_overrides() == []
+def test_each_voice_keeps_its_own_choice(monkeypatch):
+    make_profile("a")
+    make_profile("b")
     monkeypatch.setenv("POCKET_TEMP", "0.9")
-    assert tts.env_overrides() == ["POCKET_TEMP"]
-    assert dict(tts.style_choices())["Steady"]["temp"] == 0.2  # a style is heard as named even then
+    assert tts.get_tuning("a")["temp"] == 0.9 and not tts.is_tuned("a")  # .env is the starting point
+    tts.save_tuning({"temp": 0.4, "pitch": 1.5, "clean": 2}, voice="a")
+    chosen = tts.get_tuning("a")
+    assert (chosen["temp"], chosen["pitch"], chosen["clean"]) == (0.4, 1.5, 2)  # the app's choice beats .env
+    assert tts.get_tuning("b")["pitch"] == 0 and tts.get_tuning()["pitch"] == 0
+    tts.reset_tuning("a")
+    assert tts.get_tuning("a")["temp"] == 0.9
+    with pytest.raises(AppError):
+        tts.save_tuning({}, voice="missing")
+
+
+def test_deleting_a_voice_removes_its_choice():
+    make_profile("a")
+    tts.save_tuning({"speed": 1.2}, voice="a")
+    tts.delete_profile("a")
+    make_profile("a")
+    assert tts.get_tuning("a")["speed"] == 1.0
+
+
+def test_comparisons_start_from_the_voice_settings():
+    make_profile("a")
+    tts.save_tuning({"temp": 0.6, "speed": 1.08}, voice="a")
+    styles = tts.style_choices("a")
+    assert [name for name, _ in styles] == ["Current", "Steady", "Natural", "Expressive"]
+    assert styles[0][1]["temp"] == 0.6 and all(t["speed"] == 1.08 for _, t in styles)
+    pitches = tts.variation_choices("Pitch", "a")
+    assert [t["pitch"] for _, t in pitches] == [-3.0, -1.5, 0.0, 1.5, 3.0] and pitches[0][1]["temp"] == 0.6
+
+
+def test_speech_uses_the_voice_choice(monkeypatch):
+    import numpy as np
+
+    class FakeModel:
+        sample_rate = 24000
+
+        def generate_audio(self, state, text):
+            return np.zeros(24000, dtype=np.float32)
+
+    make_profile("a")
+    monkeypatch.setattr(tts, "_get_model", FakeModel)
+    monkeypatch.setattr(tts, "_load_state", lambda name: "state")
+    before = tts._filler_path("a", "Okay.")
+    tts.save_tuning({"speed": 1.25}, voice="a")
+    assert tts.synthesize("hi", profile="a")[1] == pytest.approx(0.8, abs=0.01)
+    assert tts._filler_path("a", "Okay.") != before  # waiting phrases are remade with the new sound

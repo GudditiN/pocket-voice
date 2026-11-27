@@ -18,6 +18,7 @@ import time
 
 import numpy as np
 
+import effects
 from audio import SILENCE_RMS, float_to_wav, normalize_wav, reduce_noise, to_dbfs, trim_wav, wav_info
 from config import get_settings
 from errors import AppError
@@ -33,8 +34,10 @@ MAX_TEXT_CHARS = 800
 
 # Generation settings. Defaults are PocketTTS 4.0's own (temp 0.3, 1 sampler step, eos threshold -4.0).
 # They are plain attributes on the model that are read at generation time, so changing them needs no reload.
-DEFAULT_TUNING = {"temp": 0.3, "steps": 1, "eos_threshold": -4.0}
-_LIMITS = {"temp": (0.05, 1.5), "steps": (1, 8), "eos_threshold": (-10.0, 5.0)}
+# pitch (semitones), speed and clean (noise cleanup 0-3) shape the finished audio: see effects.py
+DEFAULT_TUNING = {"temp": 0.3, "steps": 1, "eos_threshold": -4.0, **effects.NEUTRAL}
+_LIMITS = {"temp": (0.05, 1.5), "steps": (1, 8), "eos_threshold": (-10.0, 5.0), "pitch": (-4.0, 4.0),
+           "speed": (0.75, 1.3), "clean": (0, 3)}
 
 _lock = threading.Lock()  # PocketTTS is not assumed thread-safe: one synthesis at a time
 _model = None
@@ -95,21 +98,32 @@ def clean_tuning(d: dict | None) -> dict:
             out[key] = min(max(float((d or {}).get(key, out[key])), lo), hi)
         except (TypeError, ValueError):
             pass
-    out["steps"] = int(round(out["steps"]))
+    out["steps"], out["clean"] = int(round(out["steps"])), int(round(out["clean"]))
     return out
 
 
+# .env can still set the model's own settings, as a starting point for voices not tuned in the app
 ENV_TUNING = {"temp": "POCKET_TEMP", "steps": "POCKET_STEPS", "eos_threshold": "POCKET_EOS_THRESHOLD"}
 
 
-def get_tuning() -> dict:
-    """Settings used for speech. Per setting: environment / .env wins, then the saved file, then the default."""
+def _tuning_file(voice: str | None):
+    return _paths(slug(voice))[0] / "tuning.json" if voice else get_settings().tuning_path
+
+
+def _read_tuning(path) -> dict:
     try:
-        values = json.loads(get_settings().tuning_path.read_text())
+        values = json.loads(path.read_text())
     except (OSError, ValueError):
-        values = {}
-    if not isinstance(values, dict):
-        values = {}
+        return {}
+    return values if isinstance(values, dict) else {}
+
+
+def get_tuning(voice: str | None = None) -> dict:
+    """Settings used for speech. Per setting, the first of these that has it wins:
+
+    the voice's own choice (made on Voice Setup), .env, the shared saved file, the default.
+    """
+    values = _read_tuning(get_settings().tuning_path)
     for key, var in ENV_TUNING.items():
         raw = os.environ.get(var, "").strip()
         if not raw:
@@ -122,21 +136,30 @@ def get_tuning() -> dict:
             values[key] = number
         else:
             log.warning("Ignoring %s: not a number", var)
+    if voice:
+        values.update(_read_tuning(_tuning_file(voice)))
     return clean_tuning(values)
 
 
-def save_tuning(d: dict) -> dict:
-    s = get_settings()
+def save_tuning(d: dict, voice: str | None = None) -> dict:
+    """Save settings for one voice, or (without a voice) as the shared starting point."""
+    if voice and not profile_exists(slug(voice)):
+        raise AppError("no_profile", f"There is no profile named {voice!r}.")
+    path = _tuning_file(voice)
     cleaned = clean_tuning(d)
-    s.voice_dir.mkdir(parents=True, exist_ok=True)
-    tmp = s.tuning_path.with_suffix(".tmp")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(cleaned))
-    os.replace(tmp, s.tuning_path)
+    os.replace(tmp, path)
     return cleaned
 
 
-def reset_tuning() -> None:
-    get_settings().tuning_path.unlink(missing_ok=True)
+def reset_tuning(voice: str | None = None) -> None:
+    _tuning_file(voice).unlink(missing_ok=True)
+
+
+def is_tuned(voice: str) -> bool:
+    return _tuning_file(voice).exists()
 
 
 # speaking styles offered for side-by-side comparison on the Voice Setup page
@@ -144,15 +167,17 @@ STYLES = {"Steady": {"temp": 0.2, "steps": 2}, "Natural": {"temp": 0.5, "steps":
           "Expressive": {"temp": 0.8, "steps": 3}}
 
 
-def style_choices() -> list[tuple[str, dict]]:
+def style_choices(voice: str | None = None) -> list[tuple[str, dict]]:
     """The settings in use now, followed by the ready-made styles."""
-    current = get_tuning()
+    current = get_tuning(voice)
     return [("Current", current)] + [(name, clean_tuning({**current, **style})) for name, style in STYLES.items()]
 
 
-def env_overrides() -> list[str]:
-    """Tuning variables set in the environment or .env: they win over a choice saved from the app."""
-    return [var for var in ENV_TUNING.values() if os.environ.get(var, "").strip()]
+def variation_choices(group: str, voice: str | None = None) -> list[tuple[str, dict]]:
+    """The settings in use, with one of pitch, speed or noise cleanup varied."""
+    key, options = effects.VARIATIONS[group]
+    current = get_tuning(voice)
+    return [(label, clean_tuning({**current, key: value})) for label, value in options]
 
 
 # ---------------------------------------------------------------- profiles
@@ -325,16 +350,17 @@ def synthesize_stream(text: str, profile: str | None = None, tuning: dict | None
     text = (text or "").strip()
     if not text:
         raise AppError("tts", "Nothing to speak.")
-    t = clean_tuning(tuning) if tuning is not None else get_tuning()
     name = profile or active_profile()
     if not name:
         raise AppError("no_profile", "No voice profile yet. Create one on the Voice Setup page.")
+    t = clean_tuning(tuning) if tuning is not None else get_tuning(name)
     with _lock:
         state = _load_state(name)
         model = _get_model()
         model.temp, model.sampler_decode_steps, model.eos_threshold = t["temp"], t["steps"], t["eos_threshold"]
         rate = int(model.sample_rate)
-        held, size, wanted = [], 0, first_chunk_s * rate
+        shaping = effects.active(t)  # effects need the whole sentence: pieces processed alone would click
+        held, size, wanted = [], 0, float("inf") if shaping else first_chunk_s * rate
         try:
             for piece in model.generate_audio_stream(state, text[:MAX_TEXT_CHARS]):
                 samples = np.asarray(piece.detach().cpu().numpy() if hasattr(piece, "detach") else piece,
@@ -347,7 +373,8 @@ def synthesize_stream(text: str, profile: str | None = None, tuning: dict | None
         except Exception as e:
             raise AppError("tts", f"Speech generation failed: {e}") from e
         if held:
-            yield np.concatenate(held), rate
+            samples = np.concatenate(held)
+            yield (effects.apply(samples, rate, t) if shaping else samples), rate
 
 
 # ---------------------------------------------------------------- fillers and warm-up
@@ -356,7 +383,7 @@ FILLERS = {"think": ["Hmm, let me think.", "Okay, one second.", "Right, so..."],
 
 
 def _filler_path(name: str, text: str):
-    key = hashlib.sha1(f"{text}|{json.dumps(get_tuning(), sort_keys=True)}".encode()).hexdigest()[:16]
+    key = hashlib.sha1(f"{text}|{json.dumps(get_tuning(name), sort_keys=True)}".encode()).hexdigest()[:16]
     return _paths(name)[0] / "fillers" / f"{key}.wav"
 
 
@@ -409,10 +436,10 @@ def synthesize(text: str, profile: str | None = None, tuning: dict | None = None
     text = (text or "").strip()
     if not text:
         raise AppError("tts", "Nothing to speak.")
-    t = clean_tuning(tuning) if tuning is not None else get_tuning()
     name = profile or active_profile()
     if not name:
         raise AppError("no_profile", "No voice profile yet. Create one on the Voice Setup page.")
+    t = clean_tuning(tuning) if tuning is not None else get_tuning(name)
     with _lock:
         state = _load_state(name)
         model = _get_model()
@@ -425,4 +452,5 @@ def synthesize(text: str, profile: str | None = None, tuning: dict | None = None
             raise AppError("tts", f"Speech generation failed: {e}") from e
         samples = np.asarray(audio.detach().cpu().numpy() if hasattr(audio, "detach") else audio, dtype=np.float32).reshape(-1)
         rate = int(model.sample_rate)
+    samples = effects.apply(samples, rate, t)
     return float_to_wav(samples, rate), len(samples) / rate
