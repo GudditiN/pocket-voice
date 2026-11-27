@@ -77,6 +77,9 @@ with a live dashboard showing CPU, memory and latency.
 | [app/pages/2_Dashboard.py](app/pages/2_Dashboard.py) | System and voice analytics |
 | [app/pipeline.py](app/pipeline.py) | One turn: ASR → LLM → TTS, timing, error categories |
 | [app/tts.py](app/tts.py) | PocketTTS model, named voice profiles, tuning |
+| [app/quality.py](app/quality.py) | Recording score and silence trimming |
+| [app/effects.py](app/effects.py) | Pitch, speed and noise cleanup of the spoken audio |
+| [app/similarity.py](app/similarity.py) | Match score between the original recording and the AI voice |
 | [app/asr.py](app/asr.py), [app/llm.py](app/llm.py) | Groq calls (optional local Whisper) and the tool-calling loop |
 | [app/sentences.py](app/sentences.py), [app/player.py](app/player.py) | Cut the streaming answer into sentences; play audio pieces in the browser |
 | [app/cards.py](app/cards.py) | Link cards and pictures shown with an answer |
@@ -360,11 +363,14 @@ The running app uses the new active profile from the next answer.
 
 | Compare | Choices |
 |---|---|
+| Original vs AI | Your recording next to the AI voice as it sounds now (**Check match**) |
 | Speaking style | Current, Steady, Natural, Expressive |
 | Pitch | Much deeper to much higher (±3 semitones) |
 | Speed | Slow to fast |
 | Noise cleanup | Off, Light, Medium, Strong |
 | Mix your own | Sliders for all settings, then **Preview** |
+
+**Match score.** Every AI version is scored from 0 to 100 against your original recording, and the closest is marked ⭐. It compares **tone** (the shape of the sound) and **pitch** using plain numpy, with no extra model. It ignores words, speaking speed and naturalness, and it is not speaker verification. Its scale was set with computer-made system voices, so judge **differences between versions** rather than the number alone, and let your ears decide. Background noise and a short test sentence lower reliability.
 
 **Each voice keeps its own choice**, saved with it, and it wins over `.env`. A newly created voice is selected here automatically. **↺ Reset** returns that voice to the defaults. Nothing needs editing in files.
 

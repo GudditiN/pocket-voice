@@ -332,6 +332,14 @@ def _load_state(name: str):
     return _states[name][1]
 
 
+def reference_wav(name: str) -> bytes | None:
+    """The recording a voice was built from (for listening and comparing on the Voice Setup page)."""
+    try:
+        return _paths(slug(name))[1].read_bytes()
+    except OSError:
+        return None
+
+
 def delete_profile(name: str | None = None) -> None:
     """Delete a profile's reference recording and saved voice state (the active one by default)."""
     name = name or active_profile()

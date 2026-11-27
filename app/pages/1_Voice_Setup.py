@@ -7,6 +7,7 @@ import streamlit as st
 
 import effects
 import quality
+import similarity
 import tts
 import ui
 from audio import background_level, decode_to_wav
@@ -213,12 +214,14 @@ if not consent and wav:
     st.caption("Tick the consent box to enable voice creation.")
 
 # ---------------------------------------------------------------- step 3: how the voice sounds
-STYLE, MIX = "Speaking style", "Mix your own"
+CHECK, STYLE, MIX = "Original vs AI", "Speaking style", "Mix your own"
 
 
 def speak_variations(group: str, text: str, voice: str, custom: dict | None) -> list[dict]:
     """One audio clip per choice. Pitch, speed and cleanup reuse one take, so only that setting differs."""
-    if group == STYLE:
+    if group == CHECK:
+        choices = [("AI voice now", tts.get_tuning(voice))]
+    elif group == STYLE:
         choices = tts.style_choices(voice)
     elif group == MIX:
         choices = [("Your mix", tts.clean_tuning(custom))]
@@ -232,20 +235,52 @@ def speak_variations(group: str, text: str, voice: str, custom: dict | None) -> 
         else:
             out, secs = tts.synthesize(text, profile=voice, tuning=tuning)
         items.append({"label": label, "tuning": tuning, "wav": out, "secs": secs})
+    add_matches(items, voice)
     return items
+
+
+def add_matches(items: list[dict], voice: str) -> None:
+    """Score each clip against the recording the voice was built from."""
+    original = tts.reference_wav(voice)
+    if not original:
+        return
+    try:
+        measured = similarity.profile(original)
+        for item in items:
+            item["match"] = similarity.compare(measured, similarity.profile(item["wav"]))
+    except AppError as e:
+        st.warning(f"Match score not available: {e.message}")
+
+
+def show_match(item: dict, closest: bool) -> None:
+    match = item.get("match")
+    if not match:
+        return
+    st.progress(match["score"] / 100, text=f"Match {match['score']}/100" + (" ⭐" if closest else ""))
+    detail = f"{match['verdict']} · tone {match['tone']}/100"
+    if match["semitones"] is not None:
+        detail += f" · pitch {match['semitones']:+.1f} semitones"
+    st.caption(detail)
 
 
 if profiles:
     st.subheader("Choose how a voice sounds")
-    st.caption("Hear one sentence in different ways and keep what sounds right. Each voice keeps its own choice.")
+    st.caption("Compare AI versions with your original recording and keep what sounds right. Each voice keeps its "
+               "own choice.")
     if "tune_next" in ss:  # a voice that was just created
         ss["compare_voice"] = ss.pop("tune_next")
     if ss.get("compare_voice") not in names:
         ss["compare_voice"] = active
     voice_col, line_col = st.columns([1, 3])
     target = voice_col.selectbox("Voice", names, key="compare_voice")
-    line = line_col.text_input("Sentence", "Honestly, I think this sounds a lot like me. What do you think?",
-                               key="compare_line")
+    line = line_col.text_input("Sentence", "Honestly, I think this sounds a lot like me. The weather looks great "
+                                           "today, so let's take a short walk.", key="compare_line")
+    original = tts.reference_wav(target)
+    if original:
+        st.markdown("**Your original recording**")
+        st.audio(original, format="audio/wav")
+    else:
+        st.caption("The original recording of this voice isn't stored, so no match score is shown.")
     saved = tts.get_tuning(target)
     now_col, reset_col = st.columns([5, 1])
     now_col.caption(f"**{target}** now: {describe(saved)}")
@@ -254,7 +289,7 @@ if profiles:
         ss.pop("compare", None)
         ss["flash"] = f"'{target}' is back to the default sound."
         st.rerun()
-    group = st.radio("What to compare", [STYLE, *effects.VARIATIONS, MIX], horizontal=True, key="compare_group")
+    group = st.radio("What to compare", [CHECK, STYLE, *effects.VARIATIONS, MIX], horizontal=True, key="compare_group")
     custom = None
     if group == MIX:
         left, right = st.columns(2)
@@ -267,7 +302,7 @@ if profiles:
             "clean": effects.CLEAN_LEVELS.index(right.select_slider(
                 "Noise cleanup", options=effects.CLEAN_LEVELS, value=effects.CLEAN_LEVELS[saved["clean"]])),
         }
-    if st.button("🎚️ Preview" if group == MIX else "🎚️ Compare"):
+    if st.button("🎚️ Preview" if group == MIX else "🔍 Check match" if group == CHECK else "🎚️ Compare"):
         ss.pop("compare", None)
         try:
             with st.spinner("Speaking the sentence…"):
@@ -277,14 +312,19 @@ if profiles:
             st.error(f"{e.message}  \n_Category: `{e.category}`_")
     shown = ss.get("compare")
     if shown and shown["group"] == group and shown["voice"] == target:
+        best = max((item["match"]["score"] for item in shown["items"] if "match" in item), default=None)
         for i, (column, item) in enumerate(zip(st.columns(len(shown["items"])), shown["items"])):
-            column.markdown(f"**{item['label']}**")
-            column.audio(item["wav"], format="audio/wav")
-            column.caption(describe(item["tuning"]))
-            if item["label"] != "Current" and column.button("Use this", key=f"use_{i}"):
+            with column:
+                st.markdown(f"**{item['label']}**")
+                st.audio(item["wav"], format="audio/wav")
+                show_match(item, len(shown["items"]) > 1 and item.get("match", {}).get("score") == best)
+                st.caption(describe(item["tuning"]))
+            if item["label"] not in ("Current", "AI voice now") and column.button("Use this", key=f"use_{i}"):
                 tts.save_tuning(item["tuning"], voice=target)
                 ss.pop("compare", None)
                 ss["flash"] = f"Saved for '{target}': {describe(item['tuning'])}."
                 st.rerun()
+    st.caption("The match score is an estimate from tone and pitch. It ignores words, speed and how natural the "
+               "speech is, so use it to rank versions and trust your ears for the final choice.")
     st.caption("Pitch changes of more than 1.5 sound less like you. With pitch, speed or cleanup on, each sentence "
                "is finished before it plays, so replies start a little later.")
