@@ -21,6 +21,7 @@ import numpy as np
 from audio import SILENCE_RMS, float_to_wav, normalize_wav, reduce_noise, to_dbfs, trim_wav, wav_info
 from config import get_settings
 from errors import AppError
+from quality import trim_silence
 
 log = logging.getLogger(__name__)
 
@@ -138,6 +139,22 @@ def reset_tuning() -> None:
     get_settings().tuning_path.unlink(missing_ok=True)
 
 
+# speaking styles offered for side-by-side comparison on the Voice Setup page
+STYLES = {"Steady": {"temp": 0.2, "steps": 2}, "Natural": {"temp": 0.5, "steps": 2},
+          "Expressive": {"temp": 0.8, "steps": 3}}
+
+
+def style_choices() -> list[tuple[str, dict]]:
+    """The settings in use now, followed by the ready-made styles."""
+    current = get_tuning()
+    return [("Current", current)] + [(name, clean_tuning({**current, **style})) for name, style in STYLES.items()]
+
+
+def env_overrides() -> list[str]:
+    """Tuning variables set in the environment or .env: they win over a choice saved from the app."""
+    return [var for var in ENV_TUNING.values() if os.environ.get(var, "").strip()]
+
+
 # ---------------------------------------------------------------- profiles
 def slug(name: str) -> str:
     s = re.sub(r"[^a-z0-9_-]+", "-", (name or "").lower().strip()).strip("-")[:32]
@@ -211,7 +228,11 @@ def profile_info(name: str | None = None) -> dict | None:
 def prepare_reference(wav_bytes: bytes, denoise: str = "off") -> tuple[bytes, dict]:
     """The exact audio a voice is built from: validated, trimmed, optionally de-noised, level-boosted."""
     original = validate_reference(wav_bytes)
-    trimmed = original > USE_REF_S
+    spoken = trim_silence(wav_bytes)  # don't spend the few seconds used for the voice on silence
+    if wav_info(spoken)[0] >= MIN_REF_S:
+        wav_bytes = spoken
+    length = wav_info(wav_bytes)[0]
+    trimmed = length > USE_REF_S
     if trimmed:  # a clip of 10-20 s is enough; keep the first USE_REF_S seconds
         wav_bytes = trim_wav(wav_bytes, USE_REF_S)
         validate_reference(wav_bytes)  # the kept part must contain speech
@@ -219,7 +240,7 @@ def prepare_reference(wav_bytes: bytes, denoise: str = "off") -> tuple[bytes, di
         wav_bytes = reduce_noise(wav_bytes, denoise)
         validate_reference(wav_bytes)  # cleaning must not leave silence
     wav_bytes = normalize_wav(wav_bytes)  # boost a quiet recording before encoding the voice
-    return wav_bytes, {"duration_s": min(original, USE_REF_S), "original_s": original, "trimmed": trimmed,
+    return wav_bytes, {"duration_s": min(length, USE_REF_S), "original_s": original, "trimmed": trimmed,
                        "denoise": denoise}
 
 
@@ -331,11 +352,7 @@ def synthesize_stream(text: str, profile: str | None = None, tuning: dict | None
 
 # ---------------------------------------------------------------- fillers and warm-up
 FILLERS = {"think": ["Hmm, let me think.", "Okay, one second.", "Right, so..."],
-           "search": ["Let me check that for you.", "One moment, I'm looking it up."],
-           # complete spoken replies for product searches: the screen carries the details
-           "products": ["Here are some products below. Tap any one to open it.",
-                        "I've put some options below. Tap one to see more."],
-           "no_products": ["I couldn't find that one, but you can browse the section below."]}
+           "search": ["Let me check that for you.", "One moment, I'm looking it up."]}
 
 
 def _filler_path(name: str, text: str):
@@ -350,24 +367,6 @@ def filler(kind: str, profile: str | None = None) -> bytes | None:
         return None
     ready = [p for p in (_filler_path(name, t) for t in FILLERS.get(kind, [])) if p.exists()]
     return random.choice(ready).read_bytes() if ready else None
-
-
-def phrase(kind: str, profile: str | None = None) -> tuple[str, bytes]:
-    """(words, audio) of a stock reply in this voice. Instant once prepared; made and saved the first time."""
-    name = profile or active_profile()
-    if not name:
-        raise AppError("no_profile", "No voice profile yet. Create one on the Voice Setup page.")
-    ready = [(t, p) for t in FILLERS[kind] if (p := _filler_path(name, t)).exists()]
-    if ready:
-        text, path = random.choice(ready)
-        return text, path.read_bytes()
-    text = FILLERS[kind][0]
-    wav, _ = synthesize(text, profile=name)
-    path = _filler_path(name, text)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(wav)
-    os.chmod(path, 0o600)
-    return text, wav
 
 
 def make_fillers(profile: str | None = None) -> int:

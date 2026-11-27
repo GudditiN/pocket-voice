@@ -16,7 +16,7 @@ _CSS = """
 /* audio pieces of fast replies are scripts only: take no space */
 [class*="st-key-pvsound"] { display: none !important; }
 
-/* link and product cards: the whole card is clickable */
+/* link cards: the whole card is clickable */
 .pv-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .75rem; margin: .4rem 0 .6rem; }
 a.pv-card { display: flex; flex-direction: column; gap: .35rem; padding: .7rem; border-radius: 14px; color: inherit !important;
   text-decoration: none !important; border: 1px solid rgba(127,127,127,.28); background: rgba(127,127,127,.05);

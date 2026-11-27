@@ -18,6 +18,7 @@ import ssl
 import threading
 import time
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, wait
 from collections import OrderedDict
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -82,7 +83,7 @@ def fetch(url: str, method: str = "GET", body: bytes | None = None, headers: dic
         parts = urlsplit(url)
         if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
             raise ToolError("Only normal http(s) web addresses are allowed.")
-        if parts.hostname.lower() in ASKS_NOT_TO_BE_READ and not get_settings().nest_allowed:
+        if parts.hostname.lower() in ASKS_NOT_TO_BE_READ:
             raise ToolError(f"{parts.hostname} asks automated tools not to summarise it, so it is not read.")
         port = parts.port or (443 if parts.scheme == "https" else 80)
         if port not in (80, 443):
@@ -189,6 +190,11 @@ class _DuckResults(HTMLParser):
             self.results[-1][self._field] += data
 
 
+DETAIL_PAGES = 2  # search results that are opened for more detail
+DETAIL_CHARS = 700  # taken from each
+DETAIL_WAIT_S = 4  # never wait longer than this for them
+
+
 def _clip(text: str, n: int) -> str:
     return re.sub(r"\s+", " ", text or "").strip()[:n]
 
@@ -281,6 +287,42 @@ def wikipedia(topic: str) -> dict:
                                                for p in pages]}
 
 
+def _passages(text: str, query: str, limit: int = DETAIL_CHARS) -> str:
+    """The sentences of a page that share the most words with the question, kept in page order."""
+    wanted = {w for w in re.findall(r"[a-z0-9]+", query.lower()) if len(w) > 2}
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if 30 <= len(s.strip()) <= 400]
+    scored = [(len(wanted & set(re.findall(r"[a-z0-9]+", s.lower()))), i, s) for i, s in enumerate(sentences)]
+    chosen, size = [], 0
+    for score, i, sentence in sorted(scored, key=lambda x: (-x[0], x[1])):
+        if score and size + len(sentence) <= limit:
+            chosen.append((i, sentence))
+            size += len(sentence) + 1
+    return " ".join(s for _, s in sorted(chosen))
+
+
+def _details(url: str, query: str) -> str:
+    try:
+        status, ctype, text = fetch(url, redirects=2)
+        if status != 200 or "html" not in ctype.lower():
+            return ""
+        page = _PageText()
+        page.feed(text)
+    except Exception:  # details are a bonus: a slow or odd page must not break the search
+        return ""
+    return _passages(" ".join(page.chunks), query)
+
+
+def _add_details(results: list[dict], query: str) -> None:
+    """Read the top pages at the same time and attach the relevant sentences; slow pages are skipped."""
+    pool = ThreadPoolExecutor(max_workers=DETAIL_PAGES)
+    jobs = {pool.submit(_details, r["url"], query): r for r in results[:DETAIL_PAGES]}
+    done, _ = wait(jobs, timeout=DETAIL_WAIT_S)
+    pool.shutdown(wait=False, cancel_futures=True)
+    for job in done:
+        if job.result():
+            jobs[job]["details"] = job.result()
+
+
 def web_search(query: str) -> dict:
     key = get_settings().tavily_api_key
     engines = ([("Tavily", lambda: _tavily(query, key))] if key else []) + [("DuckDuckGo", lambda: _duckduckgo(query))]
@@ -295,6 +337,8 @@ def web_search(query: str) -> dict:
                                                 "snippet": _clip(r["snippet"], 280)} for r in results]}
             if results[0].get("images"):
                 out["images"] = results[0]["images"]
+            if get_settings().web_details:
+                _add_details(out["results"], query)
             return out
     # Search engines unavailable: combine recent news with Wikipedia.
     fallback: dict = {"source": "News and Wikipedia (web search unavailable)"}
@@ -325,6 +369,40 @@ def _wiki_plain(value: str) -> str:
     return _clip(re.sub(r"<[^>]+>|''+|\{\{.*|\}\}", " ", value), 120)
 
 
+def _wiki_search(query: str, limit: int) -> list[dict]:
+    """Pages (with the text of their top section) for a Wikipedia search, best match first."""
+    data = _get_json("https://en.wikipedia.org/w/api.php?" + urlencode(
+        {"action": "query", "format": "json", "generator": "search", "gsrsearch": query, "gsrlimit": limit,
+         "prop": "revisions|info", "inprop": "url", "rvprop": "content", "rvslots": "main", "rvsection": 0}))
+    return sorted((data.get("query") or {}).get("pages", {}).values(), key=lambda p: p.get("index", 99))
+
+
+def _infobox(page: dict, field: str) -> str:
+    try:
+        text = page["revisions"][0]["slots"]["main"]["*"]
+    except (KeyError, IndexError):
+        return ""
+    found = re.search(rf"^\s*\|\s*{field}\s*=[ \t]*(.+)$", text, re.M)
+    return _wiki_plain(found.group(1)) if found else ""
+
+
+def _ministry_holder(wanted: frozenset) -> tuple[dict, str] | None:
+    """Indian ministers are listed on the ministry's page ("minister1_name") when the office has no page of its own."""
+    def singular(words):
+        return {w.rstrip("s") for w in words}
+
+    portfolio = singular(wanted - {"minister", "union", "cabinet", "india", "indian", "ministry"})
+    if "minister" not in wanted or not portfolio or get_settings().live_region != "IN" or wanted & {"state", "chief", "prime"}:
+        return None
+    for page in _wiki_search("Ministry of " + " ".join(sorted(wanted - {"minister", "india"})) + " India", 4):
+        title = page.get("title", "")
+        if title.startswith("Ministry of ") and portfolio <= singular(_office_words(title)):
+            name = _infobox(page, "minister1_name")
+            if name:
+                return page, name
+    return None
+
+
 def office_holder(office: str) -> dict:
     """Who currently holds a public office, from the 'incumbent' field of that office's Wikipedia page.
 
@@ -332,33 +410,28 @@ def office_holder(office: str) -> dict:
     can never answer in its place.
     """
     wanted = _office_words(office)
-    data = _get_json("https://en.wikipedia.org/w/api.php?" + urlencode(
-        {"action": "query", "format": "json", "generator": "search", "gsrsearch": " ".join(sorted(wanted)) or office,
-         "gsrlimit": 8, "prop": "revisions|info", "inprop": "url", "rvprop": "content", "rvslots": "main",
-         "rvsection": 0}))
-    for page in sorted((data.get("query") or {}).get("pages", {}).values(), key=lambda p: p.get("index", 99)):
-        if _office_words(page.get("title", "")) != wanted:
-            continue
-        try:
-            text = page["revisions"][0]["slots"]["main"]["*"]
-        except (KeyError, IndexError):
-            continue
-        found = re.search(r"^\s*\|\s*incumbent\s*=[ \t]*(.+)$", text, re.M)
-        holder = _wiki_plain(found.group(1)) if found else ""
-        if holder:
-            since = re.search(r"^\s*\|\s*incumbentsince\s*=[ \t]*(.+)$", text, re.M)
-            out = {"source": "Wikipedia", "office": page["title"], "current_holder": holder,
-                   "url": page.get("fullurl", "")}
-            if since and _wiki_plain(since.group(1)):
-                out["since"] = _wiki_plain(since.group(1))
-            try:  # a photo of the person is a nice extra, never required
-                person = wikipedia(holder)["results"][0]
-                if _office_words(person["title"]) == _office_words(holder):
-                    out["person"] = {"title": person["title"], "url": person["url"], "image": person["image"],
-                                     "summary": _clip(person["summary"], 200)}
-            except (ToolError, KeyError, IndexError):
-                pass
-            return out
+    found = None  # (page, name)
+    for page in _wiki_search(" ".join(sorted(wanted)) or office, 8):
+        if _office_words(page.get("title", "")) == wanted and _infobox(page, "incumbent"):
+            found = page, _infobox(page, "incumbent")
+            break
+    found = found or _ministry_holder(wanted)
+    if found:
+        page, holder = found
+        out = {"source": "Wikipedia", "office": page["title"], "current_holder": holder,
+               "url": page.get("fullurl", "")}
+        if _infobox(page, "incumbentsince"):
+            out["since"] = _infobox(page, "incumbentsince")
+        if page["title"].startswith("Ministry of "):
+            out["office"] = f"Minister, {page['title']}"
+        try:  # a photo of the person is a nice extra, never required
+            person = wikipedia(holder)["results"][0]
+            if _office_words(person["title"]) == _office_words(holder):
+                out["person"] = {"title": person["title"], "url": person["url"], "image": person["image"],
+                                 "summary": _clip(person["summary"], 200)}
+        except (ToolError, KeyError, IndexError):
+            pass
+        return out
     raise ToolError("The current holder of that office wasn't found. Use the full official title, or try news.")
 
 
@@ -429,9 +502,6 @@ def _spec(name: str, description: str, arg: str, arg_description: str) -> dict:
 
 
 TOOL_SPECS = [
-    _spec("sniffynose", "SniffyNose and SniffyNest, and pet products, prices and services (food, toys, beds, "
-          "grooming, walking, adoption, membership). Reads sniffynose.com directly.", "query",
-          "What the user wants, e.g. 'dog food under 1000' or 'grooming'"),
     _spec("web_search", "Search the web. Use for current facts, people in office, companies, products, apps, "
           "websites, or any name you do not know for certain.", "query", "Search words"),
     _spec("read_webpage", "Read a web page the user named, or one returned by web_search.", "url", "Full https URL"),
@@ -445,7 +515,7 @@ TOOL_SPECS = [
           "name", "Index or company name, or symbol"),
     _spec("weather", "Current weather and short forecast.", "place", "City name"),
 ]
-_TOOLS = {"sniffynose": ("query", lambda q: sniffy.search(q)), "web_search": ("query", web_search), "read_webpage": ("url", read_webpage), "news": ("query", news),
+_TOOLS = {"web_search": ("query", web_search), "read_webpage": ("url", read_webpage), "news": ("query", news),
           "wikipedia": ("topic", wikipedia), "office_holder": ("office", office_holder),
           "market_quote": ("name", market_quote), "weather": ("place", weather)}
 
@@ -455,7 +525,7 @@ _DOMAIN = re.compile(r"\b((?:[a-z0-9-]+\.)+(?:com|in|org|net|io|ai|co|app|dev|ed
 
 # ---------------------------------------------------------------- cache
 # Seconds a successful result is reused, so repeat questions answer faster and free sources aren't hammered.
-CACHE_SECONDS = {"sniffynose": 600, "market_quote": 60, "news": 300, "weather": 600, "web_search": 600, "read_webpage": 600,
+CACHE_SECONDS = {"market_quote": 60, "news": 300, "weather": 600, "web_search": 600, "read_webpage": 600,
                  "wikipedia": 3600, "office_holder": 3600}
 
 
@@ -509,15 +579,13 @@ class Session:
     def __init__(self, question: str):
         self.named_hosts = {h.lower().removeprefix("www.") for h in _DOMAIN.findall(question)}
         words = re.findall(r"[a-z0-9]+", question.lower())
-        # "sniffy nose" or "sniffynose" -> the home page of sniffynose.com / .in may be opened
+        # "green leaf" or "greenleaf" -> the home page of greenleaf.com / .in may be opened
         names = {w for w in words if len(w) >= 6} | {a + b for a, b in zip(words, words[1:]) if len(a + b) >= 6}
         self.guessable = {f"{n}.{tld}" for n in names for tld in ("com", "in")}
         self.result_urls: set[str] = set()
         self.sources: list[dict] = []
-        self.first_tool: str | None = None  # a tool that must be called before answering
         self.cards: list[dict] = []  # links (with pictures) to show on screen
         self.images: list[str] = []  # extra pictures to show on screen
-        self.shops: list[dict] = []  # "search elsewhere" links: [{'name','url'}]
 
     def may_read(self, url: str) -> bool:
         parts = urlsplit(url)
@@ -539,7 +607,6 @@ class Session:
 
     def _cite(self, data: dict) -> None:
         items = [data] if data.get("url") else (data.get("results") or [])[:3]
-        items = items or [*(data.get("products") or [])[:3], *(data.get("pages") or [])[:2]]
         for key in ("news", "wikipedia"):
             if key in data:
                 self._cite(data[key])
@@ -557,20 +624,7 @@ class Session:
                 self.cards.append({"title": _clip(title, 120) or url, "url": url, "snippet": _clip(snippet, 160),
                                    "image": picture(image)})
 
-        if tool == "sniffynose":
-            self.shops = data.get("compare") or self.shops
-            for p in data.get("products", [])[:6]:
-                low = p.get("price_inr")
-                price = f"₹{low:,}" if isinstance(low, (int, float)) else ""
-                if price and p.get("price_up_to_inr"):
-                    price = f"from {price}"
-                stock = "In stock" if p.get("in_stock") else "Out of stock"
-                card(p["name"], p["url"], " · ".join(x for x in (price, stock) if x), p.get("image"), limit=6)
-            if data.get("sniffynest"):
-                card(data["sniffynest"]["title"], data["sniffynest"]["url"])
-            for page in data.get("pages", []):
-                card(page["title"], page["url"], page.get("description"), page.get("image"))
-        elif tool == "read_webpage":
+        if tool == "read_webpage":
             card(data.get("title"), data.get("url"), data.get("description"), data.get("image"))
         elif tool == "office_holder" and data.get("person"):
             p = data["person"]
@@ -589,14 +643,6 @@ class Session:
             if len(self.images) < 4 and picture(url) and url not in self.images:
                 self.images.append(url)
 
-    def lookup(self, tool: str, value: str) -> dict:
-        """The full result of one tool, noting its sources and what to show. Raises ToolError."""
-        data = cached_call(tool, _TOOLS[tool][1], value)
-        self._remember(data)
-        self._cite(data)
-        self._show(tool, data)
-        return data
-
     def run(self, tool: str, arguments: str) -> str:
         """Run one tool call. Always returns JSON text; failures are reported to the model, never raised."""
         try:
@@ -611,15 +657,13 @@ class Session:
                 if not self.may_read(value):
                     raise ToolError("Only pages the user named or that appear in search results can be read. "
                                     "Use web_search first.")
-            if tool == "sniffynose" and not get_settings().sniffynose:
-                raise ToolError("The SniffyNose lookup is switched off.")
-            data = self.lookup(tool, value)
-            return json.dumps(_without_pictures(data), ensure_ascii=False)[:5000]
+            data = cached_call(tool, function, value)
+            self._remember(data)
+            self._cite(data)
+            self._show(tool, data)
+            return json.dumps(_without_pictures(data), ensure_ascii=False)[:6000]
         except ToolError as e:
             return json.dumps({"error": str(e)})
         except Exception:  # a broken data source must never break the answer
             log.exception("tool %s failed", tool)
             return json.dumps({"error": "The tool failed."})
-
-
-import sniffy  # noqa: E402  (sniffy.py uses the fetch and cache helpers above)

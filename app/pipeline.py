@@ -10,9 +10,7 @@ import numpy as np
 
 import asr
 import audio
-import live
 import llm
-import sniffy
 import store
 import tts
 from config import get_settings
@@ -35,8 +33,6 @@ class TurnResult:
     sources: list = field(default_factory=list)  # web pages used for the answer: [{'name','url'}]
     cards: list = field(default_factory=list)  # links to show: [{'title','url','snippet','image'}]
     images: list = field(default_factory=list)  # extra picture addresses to show
-    shops: list = field(default_factory=list)  # "search elsewhere" links
-    context: str = ""  # what the screen showed, remembered for follow-up questions
     first_audio_ms: float | None = None  # fast replies: time until the first spoken piece was ready
 
 
@@ -85,36 +81,6 @@ def _reply_while_writing(r: TurnResult, usage: dict, history, system_prompt, use
     r.timings_ms.update({k: v * 1000 for k, v in waiting.items()})
 
 
-def _show_products(r: TurnResult, profile, started, on_status, on_text, on_audio) -> bool:
-    """Answer a product search with cards and a short stock phrase: no model writing, no long speech.
-
-    Returns False if the shop couldn't be searched, so the normal answer can take over.
-    """
-    on_status("Finding products")
-    t = time.perf_counter()
-    session = live.Session(r.question)
-    try:
-        data = session.lookup("sniffynose", r.question[:300])
-    except Exception:  # not found or the site is down: let the model answer instead
-        return False
-    r.timings_ms["search"] = (time.perf_counter() - t) * 1000
-    r.cards, r.shops, r.sources = session.cards, session.shops, session.sources
-    products = data.get("products") or []
-    t = time.perf_counter()
-    r.answer, r.audio_wav = tts.phrase("products" if products else "no_products", profile)
-    r.timings_ms["tts"] = (time.perf_counter() - t) * 1000
-    r.out_audio_s = audio.wav_info(r.audio_wav)[0]
-    on_text(r.answer)
-    if on_audio is not None:
-        r.first_audio_ms = (time.perf_counter() - started) * 1000
-        on_audio(r.audio_wav)
-    if products:
-        r.context = "Products shown on screen from SniffyNose: " + "; ".join(
-            f"{i}. {p['name']}" + (f" (Rs {p['price_inr']})" if p.get("price_inr") is not None else "")
-            for i, p in enumerate(products, 1))
-    return True
-
-
 def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str | None = None,
              on_status: Callable[[str], None] = lambda s: None, text: str | None = None,
              profile: str | None = None, use_web: bool = False,
@@ -152,13 +118,8 @@ def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str 
                 raise AppError("bad_audio", "No speech was recognized. Try again.")
 
         on_question(r.question)
-        quick = bool(use_web and s.sniffynose and s.product_quick_reply and sniffy.is_shopping(r.question)
-                     and _show_products(r, profile, t0, on_status, on_text, on_audio))
-        if not quick:
-            on_status("Generating response")
-        if quick:
-            pass
-        elif on_audio is None:
+        on_status("Generating response")
+        if on_audio is None:
             t = time.perf_counter()
             r.answer, usage = llm.answer(history, r.question, system_prompt, use_web=use_web)
             r.timings_ms["llm"] = (time.perf_counter() - t) * 1000
@@ -169,9 +130,8 @@ def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str 
             r.timings_ms["tts"] = (time.perf_counter() - t) * 1000
         else:
             _reply_while_writing(r, usage, history, system_prompt, use_web, profile, t0, on_status, on_text, on_audio)
-        if not quick:
-            r.sources = usage.get("sources", [])
-            r.cards, r.images, r.shops = (usage.get(k, []) for k in ("cards", "images", "shops"))
+        r.sources = usage.get("sources", [])
+        r.cards, r.images = usage.get("cards", []), usage.get("images", [])
         r.status = "success"
         on_status("Completed")
     except AppError as e:
@@ -187,7 +147,7 @@ def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str 
             "id": r.request_id, "ts": ts, "asr_ms": r.timings_ms.get("asr"), "llm_ms": r.timings_ms.get("llm"),
             "tts_ms": r.timings_ms.get("tts"), "total_ms": r.timings_ms["total"], "first_audio_ms": r.first_audio_ms,
             "in_audio_s": r.in_audio_s, "out_audio_s": r.out_audio_s, "status": r.status,
-            "error_cat": r.error_category, "asr_model": "typed" if text is not None else s.asr_model_label, "llm_model": "product lookup (no model)" if "search" in r.timings_ms else s.llm_model,
+            "error_cat": r.error_category, "asr_model": "typed" if text is not None else s.asr_model_label, "llm_model": s.llm_model,
             "tts_model": tts.MODEL_NAME, "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
             "question_chars": len(r.question), "answer_chars": len(r.answer),  # lengths only, never content

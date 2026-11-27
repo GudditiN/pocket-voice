@@ -89,31 +89,6 @@ def test_unexpected_exception_is_contained(monkeypatch, wav):
     assert pipeline.run_turn(wav(2.0), []).error_category == "unknown"
 
 
-def test_product_search_shows_cards_and_skips_the_model(monkeypatch, wav):
-    import live
-
-    store.init()
-    setup_ok(monkeypatch)
-
-    def no_model(*a, **k):
-        raise AssertionError("the model must not be called for a product search")
-
-    def fake_lookup(session, tool, value):
-        session.cards.append({"title": "Dog Food", "url": "https://sniffynose.com/products/x", "snippet": "", "image": ""})
-        return {"products": [{"name": "Dog Food", "price_inr": 510}]}
-
-    monkeypatch.setattr(llm, "answer", no_model)
-    monkeypatch.setattr(llm, "answer_stream", no_model)
-    monkeypatch.setattr(live.Session, "lookup", fake_lookup)
-    monkeypatch.setattr(tts, "phrase", lambda kind, profile=None: (f"phrase:{kind}", wav(1.0)))
-    played = []
-    r = pipeline.run_turn(None, [], text="show me dog food", use_web=True, on_audio=played.append)
-    assert r.status == "success" and r.answer == "phrase:products" and len(played) == 1
-    assert r.cards[0]["title"] == "Dog Food" and "1. Dog Food (Rs 510)" in r.context
-    row = store.query_requests(0)[0]
-    assert row["llm_ms"] is None and row["llm_model"] == "product lookup (no model)"
-
-
 def test_chosen_voice_is_used(monkeypatch, wav):
     setup_ok(monkeypatch)
     seen = {}

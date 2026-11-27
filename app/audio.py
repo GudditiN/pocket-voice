@@ -114,6 +114,9 @@ def _mono_samples(data: bytes) -> tuple[np.ndarray, int]:
     return x, p.framerate
 
 
+RUMBLE_HZ = 60  # below any speaking voice: handling bumps, mains hum, air-conditioner rumble
+
+
 def background_level(data: bytes) -> float:
     """Level in dBFS of the quieter parts (10th percentile of 20 ms windows): roughly the background noise."""
     wav_info(data)
@@ -165,6 +168,7 @@ def reduce_noise(data: bytes, level: str = "medium") -> bytes:
     gain = np.sqrt(np.clip(1.0 - over * noise / (smoothed + 1e-12), 0.0, 1.0))
     gain = np.maximum(gain, 10 ** (-max_cut_db / 20))
     gain = _smooth(_smooth(gain, 3, axis=0), 3, axis=1)  # avoids "musical" artefacts
+    gain[:, np.fft.rfftfreq(n, 1 / rate) < RUMBLE_HZ] = 0.0
 
     cleaned = np.fft.irfft(spectrum * gain, n=n, axis=1) * window
     out = np.zeros(padded.size)

@@ -6,8 +6,8 @@ import pytest
 import cards
 import live
 
-PAGE = ("<html><head><title>SniffyNose</title><meta property='og:image' content='/logo.png'>"
-        "<meta name='description' content='Pet app'></head><body>Walks</body></html>")
+PAGE = ("<html><head><title>GreenLeaf</title><meta property='og:image' content='/logo.png'>"
+        "<meta name='description' content='Garden app'></head><body>Walks</body></html>")
 
 
 def serve(monkeypatch, status=200, ctype="text/html", text=PAGE):
@@ -27,11 +27,11 @@ def test_normal_picture_is_kept():
 
 def test_web_page_becomes_a_card_and_model_gets_no_picture_addresses(monkeypatch):
     serve(monkeypatch)
-    session = live.Session("what is sniffynose.com")
-    told = session.run("read_webpage", json.dumps({"url": "https://sniffynose.com/"}))
-    assert "logo.png" not in told and "Pet app" in told
-    assert session.cards == [{"title": "SniffyNose", "url": "https://sniffynose.com/", "snippet": "Pet app",
-                              "image": "https://sniffynose.com/logo.png"}]
+    session = live.Session("what is greenleaf.com")
+    told = session.run("read_webpage", json.dumps({"url": "https://greenleaf.com/"}))
+    assert "logo.png" not in told and "Garden app" in told
+    assert session.cards == [{"title": "GreenLeaf", "url": "https://greenleaf.com/", "snippet": "Garden app",
+                              "image": "https://greenleaf.com/logo.png"}]
 
 
 def test_wikipedia_picture(monkeypatch):
@@ -54,11 +54,11 @@ def test_cards_are_limited_and_unique(monkeypatch):
 
 
 def test_whole_card_is_one_safe_link():
-    out = cards.card_html({"title": "Food <script>x</script> $5 'q'", "url": "https://sniffynose.com/products/a b",
+    out = cards.card_html({"title": "Food <script>x</script> $5 'q'", "url": "https://greenleaf.com/products/a b",
                            "snippet": "from ₹510 · In stock", "image": "https://cdn.example.com/a.png"})
-    assert out.startswith("<a class='pv-card' href='https://sniffynose.com/products/a%20b' target='_blank'")
+    assert out.startswith("<a class='pv-card' href='https://greenleaf.com/products/a%20b' target='_blank'")
     assert "<script>" not in out and "$" not in out and "'q'" not in out and out.count("<a ") == 1
-    assert "View on SniffyNose" in out and "<img src='https://cdn.example.com/a.png'" in out
+    assert "Open greenleaf.com" in out and "<img src='https://cdn.example.com/a.png'" in out
     assert cards.card_html({"title": "x", "url": "javascript:alert(1)"}) == ""
     assert "<img" not in cards.card_html({"title": "x", "url": "https://a.com", "image": "javascript:1"})
 

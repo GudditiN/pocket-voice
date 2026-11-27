@@ -35,4 +35,8 @@ def from_groq(exc: Exception, stage: str, model: str | None = None, hint: str | 
         return AppError("network", "Could not reach Groq. Check the network connection.")
     if isinstance(exc, groq.BadRequestError) and stage == "asr":
         return AppError("bad_audio", "Groq could not read this audio. Try recording again.")
-    return AppError(stage, f"Groq {stage.upper()} request failed: {type(exc).__name__}")
+    body = getattr(exc, "body", None)
+    detail = body.get("error", body) if isinstance(body, dict) else None
+    reason = str(detail.get("message") or "")[:160] if isinstance(detail, dict) else ""
+    return AppError(stage, f"Groq {stage.upper()} request failed: {type(exc).__name__}"
+                           + (f" ({reason})" if reason else ""))

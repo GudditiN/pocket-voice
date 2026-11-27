@@ -29,13 +29,13 @@ def card_html(card: dict) -> str:
     host = (urlsplit(url).hostname or "").removeprefix("www.")
     picture = (f"<img src='{safe(card['image'])}' alt='{safe(card.get('title'))}' loading='lazy'>"
                if str(card.get("image", "")).startswith("https://") else "<span class='pv-noimg'>🔗</span>")
-    go = "View on SniffyNose" if host == "sniffynose.com" else f"Open {host}"
+    go = f"Open {host}"
     return (f"<a class='pv-card' href='{safe(link_url(url))}' target='_blank' rel='noopener noreferrer'>{picture}"
             f"<span class='pv-title'>{safe(card.get('title'))}</span>"
             f"<span class='pv-sub'>{safe(card.get('snippet'))}</span><span class='pv-go'>{safe(go)} →</span></a>")
 
 
-def show(cards: list | None, images: list | None, shops: list | None = None) -> None:
+def show(cards: list | None, images: list | None) -> None:
     import streamlit as st
 
     if images:
@@ -45,7 +45,3 @@ def show(cards: list | None, images: list | None, shops: list | None = None) -> 
     tiles = "".join(card_html(c) for c in (cards or [])[:6])
     if tiles:
         st.markdown(f"<div class='pv-cards'>{tiles}</div>", unsafe_allow_html=True)
-    if shops:
-        st.caption("Compare elsewhere (opens a search on that site):")
-        for column, shop in zip(st.columns(len(shops)), shops):
-            column.link_button(f"Search {shop['name']}", shop["url"], width="stretch")

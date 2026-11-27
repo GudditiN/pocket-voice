@@ -1,5 +1,6 @@
 """Live-data tools and the tool-calling loop. No network: HTTP is replaced by stand-ins."""
 import json
+from types import SimpleNamespace as NS
 from types import SimpleNamespace
 
 import pytest
@@ -12,8 +13,8 @@ import tts
 
 DDG = """
 <a rel="nofollow" class="result__a" href="https://duckduckgo.com/y.js?ad=1">Advert</a>
-<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fsniffynose.com%2F&amp;rut=x">Sniffy<b>nose</b></a>
-<a class="result__snippet" href="//duckduckgo.com/l/?uddg=x">Pet care app in India</a>
+<a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fgreenleaf.com%2F&amp;rut=x">Green<b>leaf</b></a>
+<a class="result__snippet" href="//duckduckgo.com/l/?uddg=x">Garden app in India</a>
 """
 
 
@@ -38,11 +39,11 @@ def run(session, tool, **args):
 
 def test_search_parses_results_and_skips_adverts(monkeypatch):
     serve(monkeypatch, {"duckduckgo.com/html": (200, "text/html", DDG)})
-    s = live.Session("what is sniffynose")
-    out = run(s, "web_search", query="sniffynose")
+    s = live.Session("what is greenleaf")
+    out = run(s, "web_search", query="greenleaf")
     assert out["source"] == "DuckDuckGo"
-    assert out["results"] == [{"title": "Sniffynose", "url": "https://sniffynose.com/", "snippet": "Pet care app in India"}]
-    assert s.sources == [{"name": "sniffynose.com", "url": "https://sniffynose.com/"}]
+    assert out["results"] == [{"title": "Greenleaf", "url": "https://greenleaf.com/", "snippet": "Garden app in India"}]
+    assert s.sources == [{"name": "greenleaf.com", "url": "https://greenleaf.com/"}]
 
 
 def test_search_falls_back_when_blocked(monkeypatch):
@@ -65,26 +66,26 @@ def test_tavily_is_used_when_a_key_is_set(monkeypatch):
 
 
 def test_page_text_without_scripts(monkeypatch):
-    page = ("<html><head><title>SniffyNose</title><meta name='description' content='Pet app'>"
+    page = ("<html><head><title>GreenLeaf</title><meta name='description' content='Garden app'>"
             "<script>var secret=1</script></head><body><h1>Walk your dog</h1><style>x{}</style></body></html>")
-    serve(monkeypatch, {"sniffynose.com": (200, "text/html; charset=utf-8", page)})
-    out = run(live.Session("what is sniffynose.com"), "read_webpage", url="sniffynose.com")
-    assert out["title"] == "SniffyNose" and out["description"] == "Pet app"
+    serve(monkeypatch, {"greenleaf.com": (200, "text/html; charset=utf-8", page)})
+    out = run(live.Session("what is greenleaf.com"), "read_webpage", url="greenleaf.com")
+    assert out["title"] == "GreenLeaf" and out["description"] == "Garden app"
     assert "Walk your dog" in out["text"] and "secret" not in out["text"]
 
 
-@pytest.mark.parametrize("url", ["https://evil.example.com/?d=history", "https://sniffynose.com.evil.com/",
-                                 "https://sniffynose.com/?leak=1"])
+@pytest.mark.parametrize("url", ["https://evil.example.com/?d=history", "https://greenleaf.com.evil.com/",
+                                 "https://greenleaf.com/?leak=1"])
 def test_only_named_or_searched_pages_can_be_read(monkeypatch, url):
     seen = serve(monkeypatch, {"": (200, "text/html", "x")})
-    out = run(live.Session("tell me about SniffyNose.com"), "read_webpage", url=url)
+    out = run(live.Session("tell me about GreenLeaf.com"), "read_webpage", url=url)
     assert "error" in out and seen == []
 
 
 def test_home_page_of_a_named_thing_can_be_opened():
-    s = live.Session("what do you know about Sniffy Nose and sniffynest?")
-    assert s.may_read("https://sniffynose.com/") and s.may_read("https://sniffynest.com")
-    assert not s.may_read("https://sniffynose.com/private") and not s.may_read("https://sniffynest.com/?q=history")
+    s = live.Session("what do you know about Green Leaf and bluebird?")
+    assert s.may_read("https://greenleaf.com/") and s.may_read("https://bluebird.com")
+    assert not s.may_read("https://greenleaf.com/private") and not s.may_read("https://bluebird.com/?q=history")
     assert not s.may_read("https://attacker.com/")
 
 
@@ -110,8 +111,8 @@ def test_office_holder_says_unknown_rather_than_guessing(monkeypatch):
 
 
 def test_searched_pages_and_subdomains_can_be_read():
-    s = live.Session("open sniffynose.com please")
-    assert s.may_read("https://nest.sniffynose.com/") and s.may_read("https://www.sniffynose.com/about")
+    s = live.Session("open greenleaf.com please")
+    assert s.may_read("https://nest.greenleaf.com/") and s.may_read("https://www.greenleaf.com/about")
     assert not s.may_read("https://other.com/")
     s.result_urls.add("https://other.com/page?id=2")
     assert s.may_read("https://other.com/page?id=2")
@@ -142,8 +143,8 @@ def test_tool_problems_are_reported_not_raised(monkeypatch):
 
 
 def test_clean_for_speech():
-    raw = "**SniffyNose** is a pet app 【2†L6-L10】. See https://www.sniffynose.com/dashboard [1]."
-    assert llm.clean_for_speech(raw) == "SniffyNose is a pet app. See sniffynose.com."
+    raw = "**GreenLeaf** is a garden app 【2†L6-L10】. See https://www.greenleaf.com/dashboard [1]."
+    assert llm.clean_for_speech(raw) == "GreenLeaf is a garden app. See greenleaf.com."
 
 
 def reply(content="", calls=None):
@@ -170,14 +171,14 @@ def fake_client(monkeypatch, replies):
 
 def test_model_searches_then_answers(monkeypatch):
     serve(monkeypatch, {"duckduckgo.com/html": (200, "text/html", DDG)})
-    sent = fake_client(monkeypatch, [reply(calls=[call(1, "web_search", {"query": "sniffynose"})]),
-                                     reply("SniffyNose is a pet care app.")])
-    text, usage = llm.answer([], "what is sniffynose", use_web=True)
-    assert text == "SniffyNose is a pet care app."
-    assert usage["prompt_tokens"] == 20 and usage["sources"][0]["name"] == "sniffynose.com"
+    sent = fake_client(monkeypatch, [reply(calls=[call(1, "web_search", {"query": "greenleaf"})]),
+                                     reply("GreenLeaf is a garden app.")])
+    text, usage = llm.answer([], "what is greenleaf", use_web=True)
+    assert text == "GreenLeaf is a garden app."
+    assert usage["prompt_tokens"] == 20 and usage["sources"][0]["name"] == "greenleaf.com"
     assert sent[0]["tools"] and "Today is" in sent[0]["messages"][0]["content"]
     assert [m["role"] for m in sent[1]["messages"]] == ["system", "user", "assistant", "tool"]
-    assert "Pet care app in India" in sent[1]["messages"][-1]["content"]
+    assert "Garden app in India" in sent[1]["messages"][-1]["content"]
 
 
 def test_tool_rounds_are_limited(monkeypatch):
@@ -186,7 +187,8 @@ def test_tool_rounds_are_limited(monkeypatch):
     sent = fake_client(monkeypatch, [again])
     text, _ = llm.answer([], "q", use_web=True)
     assert text == "Best I found." and len(sent) == llm.MAX_TOOL_ROUNDS + 1
-    assert sent[-1]["tool_choice"] == "none"
+    assert "tools" not in sent[-1] and "No more lookups" in sent[-1]["messages"][-1]["content"]
+    assert not any(m["role"] == "tool" for m in sent[-1]["messages"])
 
 
 def test_web_off_sends_no_tools(monkeypatch):
@@ -227,10 +229,11 @@ def test_nse_listing_preferred(monkeypatch):
 
 def test_repeat_lookups_come_from_the_cache(monkeypatch):
     seen = serve(monkeypatch, {"duckduckgo.com/html": (200, "text/html", DDG)})
-    first = run(live.Session("q"), "web_search", query="SniffyNose")
+    first = run(live.Session("q"), "web_search", query="GreenLeaf")
+    fetched = len(seen)
     again = live.Session("q")
-    assert run(again, "web_search", query="sniffynose") == first and len(seen) == 1
-    assert again.sources and again.may_read("https://sniffynose.com/")  # sources and permissions still apply
+    assert run(again, "web_search", query="greenleaf") == first and len(seen) == fetched
+    assert again.sources and again.may_read("https://greenleaf.com/")  # sources and permissions still apply
 
 
 def test_cache_expires_and_errors_are_not_kept(monkeypatch):
@@ -260,9 +263,9 @@ def test_cache_is_bounded():
 
 
 def test_cached_page_still_needs_permission(monkeypatch):
-    serve(monkeypatch, {"sniffynose.com": (200, "text/html", "<title>S</title>")})
-    run(live.Session("what is sniffynose.com"), "read_webpage", url="https://sniffynose.com/")
-    assert "error" in run(live.Session("hello"), "read_webpage", url="https://sniffynose.com/")
+    serve(monkeypatch, {"greenleaf.com": (200, "text/html", "<title>S</title>")})
+    run(live.Session("what is greenleaf.com"), "read_webpage", url="https://greenleaf.com/")
+    assert "error" in run(live.Session("hello"), "read_webpage", url="https://greenleaf.com/")
 
 
 def test_pipeline_passes_switch_and_keeps_sources(monkeypatch):
@@ -278,3 +281,81 @@ def test_pipeline_passes_switch_and_keeps_sources(monkeypatch):
     monkeypatch.setattr(tts, "synthesize", lambda t, **k: (b"RIFF", 1.0))
     r = pipeline.run_turn(None, [], text="hi", use_web=True)
     assert seen["web"] is True and r.sources == [{"name": "a.com", "url": "https://a.com/"}]
+
+
+def test_sites_that_ask_not_to_be_read_are_skipped():
+    with pytest.raises(live.ToolError, match="asks automated tools"):
+        live.fetch("https://nest.sniffynose.com/")
+
+
+class BadRequestError(Exception):  # same name as the Groq SDK's error
+    pass
+
+
+def failing_client(monkeypatch, failures, answer="Narendra Modi."):
+    sent = []
+
+    def create(**kw):
+        sent.append(kw)
+        if len(sent) <= failures:
+            raise BadRequestError("tool_use_failed")
+        return reply(answer)
+
+    monkeypatch.setattr(llm, "_groq_client", lambda t: NS(chat=NS(completions=NS(create=create))))
+    return sent
+
+
+def test_broken_tool_call_is_retried(monkeypatch):
+    sent = failing_client(monkeypatch, 1)
+    assert llm.answer([], "who is pm", use_web=True)[0] == "Narendra Modi."
+    assert len(sent) == 2 and sent[1]["tools"]
+
+
+def test_repeated_tool_failure_still_answers(monkeypatch):
+    sent = failing_client(monkeypatch, 2)
+    assert llm.answer([], "who is pm", use_web=True)[0] == "Narendra Modi."
+    assert len(sent) == 3 and "tools" not in sent[-1]
+
+
+def test_stream_that_breaks_midway_still_answers(monkeypatch):
+    class APIError(Exception):
+        pass
+
+    def broken():
+        raise APIError("Failed to call a function")
+        yield
+
+    sent = []
+
+    def create(**kw):
+        sent.append(kw)
+        if len(sent) == 1:
+            return broken()
+        return iter([NS(choices=[NS(delta=NS(content="Done.", tool_calls=None))], usage=None, x_groq=None)])
+
+    monkeypatch.setattr(llm, "_groq_client", lambda t: NS(chat=NS(completions=NS(create=create))))
+    assert "".join(llm.answer_stream([], "q", None, True, {})) == "Done."
+    assert "tools" not in sent[-1]
+
+
+def test_minister_is_read_from_the_ministry_page(monkeypatch):
+    def page(index, title, text):
+        return {"index": index, "title": title, "fullurl": "https://en.wikipedia.org/wiki/x",
+                "revisions": [{"slots": {"main": {"*": text}}}]}
+
+    pages = [page(1, "Ministry of Civil Aviation (India)", "| minister1_name = [[Kinjarapu Ram Mohan Naidu]]\n"),
+             page(2, "Minister of Civil Aviation", "no infobox here")]
+    monkeypatch.setattr(live, "_wiki_search", lambda q, n: pages)
+    monkeypatch.setattr(live, "wikipedia", lambda t: (_ for _ in ()).throw(live.ToolError("no photo")))
+    out = live.office_holder("Aviation Minister of India")
+    assert out["current_holder"] == "Kinjarapu Ram Mohan Naidu" and "Civil Aviation" in out["office"]
+    with pytest.raises(live.ToolError):  # a different portfolio must not borrow this name
+        live.office_holder("Railway Minister of India")
+
+
+def test_search_results_get_relevant_details(monkeypatch):
+    body = ("<html><body><p>Our site has many pages about all sorts of things in general.</p>"
+            "<p>The Hyderabad metro runs three corridors with 57 stations in the city.</p></body></html>")
+    serve(monkeypatch, {"duckduckgo.com/html": (200, "text/html", DDG), "greenleaf.com": (200, "text/html", body)})
+    out = run(live.Session("q"), "web_search", query="Hyderabad metro stations")
+    assert out["results"][0]["details"] == "The Hyderabad metro runs three corridors with 57 stations in the city."

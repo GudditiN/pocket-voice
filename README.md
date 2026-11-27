@@ -79,7 +79,6 @@ with a live dashboard showing CPU, memory and latency.
 | [app/tts.py](app/tts.py) | PocketTTS model, named voice profiles, tuning |
 | [app/asr.py](app/asr.py), [app/llm.py](app/llm.py) | Groq calls (optional local Whisper) and the tool-calling loop |
 | [app/sentences.py](app/sentences.py), [app/player.py](app/player.py) | Cut the streaming answer into sentences; play audio pieces in the browser |
-| [app/sniffy.py](app/sniffy.py) | SniffyNose products, prices and services from its public pages |
 | [app/cards.py](app/cards.py) | Link cards and pictures shown with an answer |
 | [app/live.py](app/live.py) | Live-data tools: search, web pages, news, office holders, markets, weather |
 | [app/audio.py](app/audio.py) | Decode, trim, level check and boost |
@@ -203,12 +202,14 @@ your question → model picks tools → search / read / look up → model writes
 | Tool | Source | Key needed | Good for |
 |---|---|---|---|
 | Web search | Tavily if `TAVILY_API_KEY` is set, otherwise DuckDuckGo, then Google News + Wikipedia | optional | companies, apps, products, current facts |
-| Read a web page | the site itself | no | "what is sniffynose.com?" |
+| Read a web page | the site itself | no | "what is on python.org?" |
 | Current office holder | Wikipedia | no | "who is the US president / Telangana CM?" |
 | News | Google News (last 7 days) | no | headlines |
 | Facts | Wikipedia | no | background |
 | Market prices | Yahoo Finance (may be delayed) | no | Nifty, Sensex, NSE shares, gold, crypto, currency |
 | Weather | Open-Meteo | no | today and tomorrow |
+
+**More detail:** the app opens the top 2 search results and gives the model the sentences that match your question. It waits at most 4 seconds; set `WEB_DETAILS=0` for faster, shorter answers. Ministers without their own Wikipedia page are read from the ministry's page. If a lookup request fails, the app answers from what it has already found.
 
 **India first** (defaults): `LIVE_REGION=IN` and `APP_TIMEZONE=Asia/Kolkata` give Indian news and search results, NSE listings first, rupees (lakh/crore) and IST. Change them for another country.
 
@@ -216,23 +217,11 @@ your question → model picks tools → search / read / look up → model writes
 
 Each answer lists its **sources** as links. Check anything important.
 
-### 🐾 SniffyNose and pet questions
-With web search on, questions about **SniffyNose, SniffyNest, pet products, prices or services** are answered from [sniffynose.com](https://sniffynose.com) itself: the app searches its published sitemaps, reads the matching pages, and shows product cards with rupee prices, stock status and pictures.
-
-- Try: "Dog food under 1000", "Do you have a dog harness?", "Grooming for my dog", "What is SniffyNose?"
-- If nothing matches, it says so. Prices and stock are as the page showed them (cached for 10 minutes).
-- **SniffyNose comes first:** up to 6 product cards with **View on SniffyNose** buttons, then **Search Amazon.in** and **Search Google Shopping** buttons. Those two are links only. Nothing is read from Amazon or Google: Amazon restricts automated access (its product API needs an affiliate account), and Google Shopping has no free API.
-- **Product searches are quick:** for requests like "show dog food", the app skips the AI model, shows the cards and plays a short phrase in your voice that was prepared in advance ("Here are some products below…"). You don't have to say "dog" or "cat": if SniffyNose sells what you ask for ("I want chew bones"), it is shown. Products come straight from sniffynose.com. Advice questions ("can dogs eat chocolate?") still get a spoken answer. Set `PRODUCT_QUICK_REPLY=0` to have the model describe products instead.
-- **Cards are clickable:** the picture, title and price all open that page in a new tab.
-- **Site rules respected:** sniffynose.com's `robots.txt` allows search and AI answers that link back (`ai-input=yes`, `use=reference`), **forbids training** (`ai-train=no`) and disallows `/api/`. Never use its content as training data.
-- **SniffyNest:** `nest.sniffynose.com/robots.txt` says not to summarise or cite it, so the app only links to it. If you own the site, fix that file (or set `SNIFFYNEST_ALLOWED=1`).
-- Switch off with `SNIFFYNOSE=0`.
-
 ### 🖼️ Links and pictures on screen
 With web search on, the answer is **spoken** while the screen **shows** what was found:
 - **Link cards** with a title, short description and picture (up to 4)
 - **Pictures** from Wikipedia, a page's preview image, or Tavily image results
-- Try: "Show me the Taj Mahal", "What is sniffynose.com?", "Who is the Prime Minister of India?"
+- Try: "Show me the Taj Mahal", "What is python.org?", "Who is the Prime Minister of India?"
 
 The voice never reads web addresses aloud. Links and pictures come only from fetched data, never from the model's own text. Pictures load in your browser straight from the source site, which can see that your browser requested them. They may be copyrighted: check before reusing them.
 
@@ -284,7 +273,7 @@ Send people the link and the **password to share**. Press `Ctrl+C` to close the 
 
 | Page | What to do |
 |---|---|
-| **Voice Setup** | See your voices: **▶ Test**, **⭐ Make default** or **🗑 delete** each one. To add one: name it, pick a reading passage, tick consent, record or upload, click **Create voice**. |
+| **Voice Setup** | See your voices: **▶ Test**, **⭐ Make default** or **🗑 delete** each one. To add one: name it, pick a reading passage, tick consent, record or upload, keep the takes you like, click **Create voice**. **Compare styles** picks how it speaks. |
 | **Assistant** | Choose **Answer in this voice**. Type in the chat box at the bottom, **or** tap the mic on its right: a *Listening* banner appears, tap **✓** to send or **✕** to cancel. Each answer shows which voice spoke it. Edit the system prompt or clear the conversation in the sidebar. |
 | **Dashboard** | Choose 15 min, 1 hour or 24 hours. **System** shows resources; **Voice & usage** shows latency, requests and errors. |
 
@@ -301,7 +290,8 @@ The model copies the sound of your sample, **including its noise**, so this step
 - 🔇 Quiet room, no music, TV, fan or echo.
 - 🎙️ Decent microphone, about a hand's width from your mouth, no popping.
 - 🗣️ One speaker, natural pace, in the **tone you want the assistant to have**.
-- ⏱️ **10–20 seconds** without long pauses. Start speaking right away: only the **first 20 s** are kept.
+- ⏱️ **12–20 seconds** of speech without long pauses. Wait a second before you start: silence at the ends is cut, then the **first 20 s** are used.
+- ➕ **Compare takes:** record up to three, click **Keep this take** for each, and build the voice from the best one. Each recording gets a score out of 100 with tips (length, volume, background noise, distortion).
 - 📖 Read one of the on-screen passages ("Everyday", "Varied sounds", "Conversational").
 
 | Accepted | Not accepted |
@@ -315,7 +305,7 @@ afconvert -f WAVE -d LEI16@16000 -c 1 in.m4a my_voice.wav
 
 ## Step 2 · Clean the audio
 
-**Done automatically by the app:** decoding MP3/FLAC/OGG, trimming to 20 s, boosting quiet recordings to a normal level, and rejecting silence.
+**Done automatically by the app:** decoding MP3/FLAC/OGG, cutting silence at the start and end, trimming to 20 s, boosting quiet recordings to a normal level, and rejecting silence. With noise reduction on, rumble below 60 Hz is removed too.
 
 **Built-in noise reduction:** on Voice Setup choose **Reduce background noise** → `light`, `medium` or `strong`, listen to *Original* and *Cleaned*, then click **Create voice**. Start with `light`; if your voice sounds metallic or muffled, go lighter. Set a default with `POCKET_DENOISE` in `.env`.
 
@@ -365,6 +355,10 @@ uv run python -c 'import sys; sys.path.insert(0,"app"); import tts; tts.set_acti
 The running app uses the new active profile from the next answer.
 
 ## Step 4 · Test and compare
+
+**In the app:** Voice Setup → *Find the best-sounding settings* → **Compare styles** plays one sentence with your current settings and as *Steady*, *Natural* and *Expressive*. Click **Use this** to save one. Tuning lines in `.env` win over a saved choice, so remove them first.
+
+**From the command line:**
 
 Generate the same sentence with different profiles and settings, then listen:
 ```bash
@@ -562,11 +556,9 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | `FAST_REPLY` | `1` | Speak while the answer is being written |
 | `FILLERS` | `1` | Short waiting phrases in your voice |
 | `POCKET_WARMUP` | `1` | Load the voice model at startup |
-| `SNIFFYNOSE` | `1` | Answer SniffyNose and pet-shopping questions from sniffynose.com |
-| `PRODUCT_QUICK_REPLY` | `1` | Product searches show cards with a short prepared phrase |
-| `SNIFFYNEST_ALLOWED` | `0` | Set only if you own SniffyNest and allow reading it |
 | `LIVE_DATA` | `1` | Web search switch on by default (`0` = off) |
 | `TAVILY_API_KEY` | blank | Dependable web search |
+| `WEB_DETAILS` | `1` | Open the top 2 search results for more detail (`0` = faster) |
 | `LIVE_REGION` | `IN` | Country for news and search |
 | `APP_TIMEZONE` | `Asia/Kolkata` | Time zone for today's date |
 | `POCKET_TEMP`, `POCKET_STEPS`, `POCKET_EOS_THRESHOLD` | blank (0.3, 1, −4) | Voice tuning: see [Step 5](#step-5--tune-how-it-speaks) |
@@ -700,7 +692,7 @@ The benchmark saves `data/benchmark.json`.
 ## ⚠️ Known limitations
 
 - Needs internet for Groq, and is subject to its rate limits.
-- Voice tuning has **no UI yet** (use the commands in Step 5).
+- The app offers three ready-made speaking styles; other tuning values use `.env` or the commands in Step 5.
 - Replies are fast but not a live conversation: press the mic to talk; you can't interrupt by speaking.
 - Public links are temporary testing tunnels with shared passwords (no individual user accounts).
 - One request is spoken at a time (single-user demo).

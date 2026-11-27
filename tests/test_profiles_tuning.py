@@ -92,3 +92,11 @@ def test_synthesize_applies_tuning_and_profile(monkeypatch):
     tts.save_tuning({"temp": 0.5})
     tts.synthesize("hi")  # uses the saved tuning when none is given
     assert fake.seen[2:] == (0.5, 1, -4.0)
+
+
+def test_style_choices_and_env_overrides(monkeypatch):
+    names = [name for name, _ in tts.style_choices()]
+    assert names == ["Current", "Steady", "Natural", "Expressive"] and tts.env_overrides() == []
+    monkeypatch.setenv("POCKET_TEMP", "0.9")
+    assert tts.env_overrides() == ["POCKET_TEMP"]
+    assert dict(tts.style_choices())["Steady"]["temp"] == 0.2  # a style is heard as named even then
