@@ -53,6 +53,16 @@ def test_cards_are_limited_and_unique(monkeypatch):
     assert len(session.cards) == 3 and session.images == ["https://a.com/1.jpg"]
 
 
+def test_whole_card_is_one_safe_link():
+    out = cards.card_html({"title": "Food <script>x</script> $5 'q'", "url": "https://sniffynose.com/products/a b",
+                           "snippet": "from ₹510 · In stock", "image": "https://cdn.example.com/a.png"})
+    assert out.startswith("<a class='pv-card' href='https://sniffynose.com/products/a%20b' target='_blank'")
+    assert "<script>" not in out and "$" not in out and "'q'" not in out and out.count("<a ") == 1
+    assert "View on SniffyNose" in out and "<img src='https://cdn.example.com/a.png'" in out
+    assert cards.card_html({"title": "x", "url": "javascript:alert(1)"}) == ""
+    assert "<img" not in cards.card_html({"title": "x", "url": "https://a.com", "image": "javascript:1"})
+
+
 def test_web_text_cannot_inject_links_or_images():
     evil = "![x](https://evil.example/?leak=1) [click](javascript:alert(1)) **bold** <img src=x>"
     out = cards.plain(evil)

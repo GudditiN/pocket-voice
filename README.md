@@ -221,6 +221,9 @@ With web search on, questions about **SniffyNose, SniffyNest, pet products, pric
 
 - Try: "Dog food under 1000", "Do you have a dog harness?", "Grooming for my dog", "What is SniffyNose?"
 - If nothing matches, it says so. Prices and stock are as the page showed them (cached for 10 minutes).
+- **SniffyNose comes first:** up to 6 product cards with **View on SniffyNose** buttons, then **Search Amazon.in** and **Search Google Shopping** buttons. Those two are links only. Nothing is read from Amazon or Google: Amazon restricts automated access (its product API needs an affiliate account), and Google Shopping has no free API.
+- **Product searches are quick:** for requests like "show dog food", the app skips the AI model, shows the cards and plays a short phrase in your voice that was prepared in advance ("Here are some products below…"). You don't have to say "dog" or "cat": if SniffyNose sells what you ask for ("I want chew bones"), it is shown. Products come straight from sniffynose.com. Advice questions ("can dogs eat chocolate?") still get a spoken answer. Set `PRODUCT_QUICK_REPLY=0` to have the model describe products instead.
+- **Cards are clickable:** the picture, title and price all open that page in a new tab.
 - **Site rules respected:** sniffynose.com's `robots.txt` allows search and AI answers that link back (`ai-input=yes`, `use=reference`), **forbids training** (`ai-train=no`) and disallows `/api/`. Never use its content as training data.
 - **SniffyNest:** `nest.sniffynose.com/robots.txt` says not to summarise or cite it, so the app only links to it. If you own the site, fix that file (or set `SNIFFYNEST_ALLOWED=1`).
 - Switch off with `SNIFFYNOSE=0`.
@@ -560,6 +563,7 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | `FILLERS` | `1` | Short waiting phrases in your voice |
 | `POCKET_WARMUP` | `1` | Load the voice model at startup |
 | `SNIFFYNOSE` | `1` | Answer SniffyNose and pet-shopping questions from sniffynose.com |
+| `PRODUCT_QUICK_REPLY` | `1` | Product searches show cards with a short prepared phrase |
 | `SNIFFYNEST_ALLOWED` | `0` | Set only if you own SniffyNest and allow reading it |
 | `LIVE_DATA` | `1` | Web search switch on by default (`0` = off) |
 | `TAVILY_API_KEY` | blank | Dependable web search |

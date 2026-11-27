@@ -8,6 +8,7 @@ import streamlit as st
 
 import auth
 import monitor
+import sniffy
 import store
 import tts
 from config import get_settings
@@ -47,6 +48,8 @@ def _boot() -> bool:
     monitor.start_sampler()
     if get_settings().warm_up:  # the first question shouldn't wait for the model to load
         threading.Thread(target=tts.warm_up, name="voice-warm-up", daemon=True).start()
+        if get_settings().sniffynose:
+            threading.Thread(target=sniffy.warm_up, name="catalogue-warm-up", daemon=True).start()
     return True
 
 

@@ -76,9 +76,9 @@ def reply_area(turn_id: str):
 
 
 def reply_end(turn: dict, autoplay: bool = False) -> None:
+    cards.show(turn.get("cards"), turn.get("images"), turn.get("shops"))  # products first, then the player
     st.audio(turn["wav"], format="audio/wav", autoplay=autoplay)
     st.caption(f"AI-generated voice: {turn['voice']}")
-    cards.show(turn.get("cards"), turn.get("images"))
     show_sources(turn.get("sources"))
 
 
@@ -94,8 +94,8 @@ for turn in ss["turns"]:
 
 def timing_line(result) -> str:
     t = result.timings_ms
-    parts = ([f"ASR {t['asr'] / 1000:.1f}s"] if "asr" in t else []) + \
-            [f"LLM {t.get('llm', 0) / 1000:.1f}s", f"TTS {t.get('tts', 0) / 1000:.1f}s"]
+    names = {"asr": "ASR", "search": "product search", "llm": "LLM", "tts": "TTS"}
+    parts = [f"{label} {t[key] / 1000:.1f}s" for key, label in names.items() if key in t]
     first = f"first words after {result.first_audio_ms / 1000:.1f}s · " if result.first_audio_ms else ""
     return f"{first}total {t['total'] / 1000:.1f}s ({' · '.join(parts)})"
 
@@ -121,6 +121,7 @@ def process(audio_bytes=None, text=None):
         def on_status(label: str):
             status.update(label=label + ("…" if label not in ("Completed", "Failed") else ""))
             waiting = {"Transcribing": "Listening to you…", "Generating speech": "Getting my voice ready…",
+                       "Finding products": "Finding products on SniffyNose…",
                        "Generating response": "Searching and thinking…" if use_web else "Thinking…"}
             if label in waiting and not writing["started"]:
                 think(waiting[label])
@@ -151,11 +152,12 @@ def process(audio_bytes=None, text=None):
         status.update(label=timing, state="complete")
         answer_slot.write(result.answer)
         turn = {"id": turn_id, "q": result.question, "a": result.answer, "wav": result.audio_wav, "voice": voice,
-                "timing": timing, "sources": result.sources, "cards": result.cards, "images": result.images}
+                "timing": timing, "sources": result.sources, "cards": result.cards, "images": result.images,
+                "shops": result.shops}
         # In fast mode the reply has already been played piece by piece: the player is for replaying it.
         reply_end(turn, autoplay=not fast)
     ss["history"] += [{"role": "user", "content": result.question},
-                      {"role": "assistant", "content": result.answer}]
+                      {"role": "assistant", "content": f"{result.answer} {result.context}".strip()}]
     ss["turns"].append(turn)
 
 

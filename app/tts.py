@@ -331,7 +331,11 @@ def synthesize_stream(text: str, profile: str | None = None, tuning: dict | None
 
 # ---------------------------------------------------------------- fillers and warm-up
 FILLERS = {"think": ["Hmm, let me think.", "Okay, one second.", "Right, so..."],
-           "search": ["Let me check that for you.", "One moment, I'm looking it up."]}
+           "search": ["Let me check that for you.", "One moment, I'm looking it up."],
+           # complete spoken replies for product searches: the screen carries the details
+           "products": ["Here are some products below. Tap any one to open it.",
+                        "I've put some options below. Tap one to see more."],
+           "no_products": ["I couldn't find that one, but you can browse the section below."]}
 
 
 def _filler_path(name: str, text: str):
@@ -346,6 +350,24 @@ def filler(kind: str, profile: str | None = None) -> bytes | None:
         return None
     ready = [p for p in (_filler_path(name, t) for t in FILLERS.get(kind, [])) if p.exists()]
     return random.choice(ready).read_bytes() if ready else None
+
+
+def phrase(kind: str, profile: str | None = None) -> tuple[str, bytes]:
+    """(words, audio) of a stock reply in this voice. Instant once prepared; made and saved the first time."""
+    name = profile or active_profile()
+    if not name:
+        raise AppError("no_profile", "No voice profile yet. Create one on the Voice Setup page.")
+    ready = [(t, p) for t in FILLERS[kind] if (p := _filler_path(name, t)).exists()]
+    if ready:
+        text, path = random.choice(ready)
+        return text, path.read_bytes()
+    text = FILLERS[kind][0]
+    wav, _ = synthesize(text, profile=name)
+    path = _filler_path(name, text)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(wav)
+    os.chmod(path, 0o600)
+    return text, wav
 
 
 def make_fillers(profile: str | None = None) -> int:

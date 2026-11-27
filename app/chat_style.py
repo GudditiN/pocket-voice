@@ -16,6 +16,20 @@ _CSS = """
 /* audio pieces of fast replies are scripts only: take no space */
 [class*="st-key-pvsound"] { display: none !important; }
 
+/* link and product cards: the whole card is clickable */
+.pv-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: .75rem; margin: .4rem 0 .6rem; }
+a.pv-card { display: flex; flex-direction: column; gap: .35rem; padding: .7rem; border-radius: 14px; color: inherit !important;
+  text-decoration: none !important; border: 1px solid rgba(127,127,127,.28); background: rgba(127,127,127,.05);
+  transition: transform .15s, box-shadow .15s, border-color .15s; }
+a.pv-card:hover, a.pv-card:focus-visible { transform: translateY(-3px); border-color: var(--pv-accent);
+  box-shadow: 0 10px 24px rgba(79,70,229,.20); }
+a.pv-card img, a.pv-card .pv-noimg { width: 100%; height: 150px; object-fit: contain; border-radius: 10px; background: #fff; }
+a.pv-card .pv-noimg { display: flex; align-items: center; justify-content: center; font-size: 2rem; }
+a.pv-card .pv-title { font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
+a.pv-card .pv-sub { font-size: .86rem; opacity: .75; }
+a.pv-card .pv-go { margin-top: auto; font-weight: 600; font-size: .86rem; color: var(--pv-accent); }
+
 /* composer */
 [data-testid="stChatInput"] > div {
   border-radius: 999px; border: 1.5px solid rgba(127,127,127,.30); padding: .35rem .45rem .35rem .9rem;

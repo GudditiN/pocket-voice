@@ -211,7 +211,7 @@ def picture(url: str) -> str:
 def _without_pictures(data):
     """The model only needs the words: picture addresses would waste tokens."""
     if isinstance(data, dict):
-        return {k: _without_pictures(v) for k, v in data.items() if k not in ("image", "images")}
+        return {k: _without_pictures(v) for k, v in data.items() if k not in ("image", "images", "compare")}
     return [_without_pictures(v) for v in data] if isinstance(data, list) else data
 
 
@@ -517,6 +517,7 @@ class Session:
         self.first_tool: str | None = None  # a tool that must be called before answering
         self.cards: list[dict] = []  # links (with pictures) to show on screen
         self.images: list[str] = []  # extra pictures to show on screen
+        self.shops: list[dict] = []  # "search elsewhere" links: [{'name','url'}]
 
     def may_read(self, url: str) -> bool:
         parts = urlsplit(url)
@@ -538,6 +539,7 @@ class Session:
 
     def _cite(self, data: dict) -> None:
         items = [data] if data.get("url") else (data.get("results") or [])[:3]
+        items = items or [*(data.get("products") or [])[:3], *(data.get("pages") or [])[:2]]
         for key in ("news", "wikipedia"):
             if key in data:
                 self._cite(data[key])
@@ -549,20 +551,21 @@ class Session:
 
     def _show(self, tool: str, data: dict) -> None:
         """Pick links and pictures from a result. They come only from fetched data, never from the model."""
-        def card(title, url, snippet="", image=""):
-            if str(url).startswith(("https://", "http://")) and len(self.cards) < 4 and \
+        def card(title, url, snippet="", image="", limit=4):
+            if str(url).startswith(("https://", "http://")) and len(self.cards) < limit and \
                     url not in [c["url"] for c in self.cards]:
                 self.cards.append({"title": _clip(title, 120) or url, "url": url, "snippet": _clip(snippet, 160),
                                    "image": picture(image)})
 
         if tool == "sniffynose":
-            for p in data.get("products", [])[:4]:
+            self.shops = data.get("compare") or self.shops
+            for p in data.get("products", [])[:6]:
                 low = p.get("price_inr")
                 price = f"₹{low:,}" if isinstance(low, (int, float)) else ""
                 if price and p.get("price_up_to_inr"):
                     price = f"from {price}"
                 stock = "In stock" if p.get("in_stock") else "Out of stock"
-                card(p["name"], p["url"], " · ".join(x for x in (price, stock) if x), p.get("image"))
+                card(p["name"], p["url"], " · ".join(x for x in (price, stock) if x), p.get("image"), limit=6)
             if data.get("sniffynest"):
                 card(data["sniffynest"]["title"], data["sniffynest"]["url"])
             for page in data.get("pages", []):
@@ -586,6 +589,14 @@ class Session:
             if len(self.images) < 4 and picture(url) and url not in self.images:
                 self.images.append(url)
 
+    def lookup(self, tool: str, value: str) -> dict:
+        """The full result of one tool, noting its sources and what to show. Raises ToolError."""
+        data = cached_call(tool, _TOOLS[tool][1], value)
+        self._remember(data)
+        self._cite(data)
+        self._show(tool, data)
+        return data
+
     def run(self, tool: str, arguments: str) -> str:
         """Run one tool call. Always returns JSON text; failures are reported to the model, never raised."""
         try:
@@ -602,10 +613,7 @@ class Session:
                                     "Use web_search first.")
             if tool == "sniffynose" and not get_settings().sniffynose:
                 raise ToolError("The SniffyNose lookup is switched off.")
-            data = cached_call(tool, function, value)
-            self._remember(data)
-            self._cite(data)
-            self._show(tool, data)
+            data = self.lookup(tool, value)
             return json.dumps(_without_pictures(data), ensure_ascii=False)[:5000]
         except ToolError as e:
             return json.dumps({"error": str(e)})

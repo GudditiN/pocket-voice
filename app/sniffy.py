@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote_plus
 
 import live
 from config import get_settings
@@ -28,12 +29,67 @@ _PET = re.compile(r"\b(?:pets?|dogs?|doggy|puppy|puppies|cats?|kittens?|kitty|gr
 _IGNORE = set("a an the is are am do does you your have has any me my i we show tell about what which where how much "
               "price prices cost of for in on at to and or with from give need want buy get best good please can "
               "sniffy sniffynose sniffynest nose nest product products item items pet pets under below less than rs "
-              "rupees inr within there some my it can could book looking show list all".split())
+              "rupees inr within there some my it can could book looking show list all find order shop sell search suggest "
+              "recommend got".split())
 _SPECIES = {"dog", "cat"}
 _SERVICES = {"grooming", "walker", "adoption", "membership", "offer", "reward", "support", "location", "space", "vet"}
 _SAME = {"puppy": "dog", "pup": "dog", "doggy": "dog", "kitten": "cat", "kitty": "cat", "walking": "walker",
          "walk": "walker", "adopt": "adoption", "adopting": "adoption", "member": "membership", "offer": "offer",
          "discount": "offer", "groom": "grooming", "kibble": "food", "clothes": "dress", "cloth": "dress"}
+
+
+_ITEMS = re.compile(r"\b(?:products?|items?|food|treats?|toys?|beds?|harness(?:es)?|leash(?:es)?|collars?|litter|"
+                    r"shampoos?|bowls?|feeders?|cages?|dress(?:es)?|clothes|carriers?|crates?|brush(?:es)?|"
+                    r"supplements?|chews?|bones?|kibble|biscuits?|accessories|grooming kit)\b", re.I)
+_ADVICE = re.compile(r"\b(?:can (?:my |a )?(?:dog|cat|pet|puppy|kitten)s?|should|why|safe|sick|ill|vomit\w*|diarr\w*|"
+                     r"how (?:often|to|do i|can i|much (?:food )?should)|is it ok(?:ay)?|allerg\w*|vet|news)\b", re.I)
+_BUY = re.compile(r"\b(?:show|buy|order|shop|need|want|find|get|looking for|search|any|suggest|recommend|"
+                  r"do you (?:have|sell)|have you got)\b", re.I)
+_EVERYDAY = {"food", "bed", "toy", "bowl", "brush", "dress", "carrier", "accessorie", "supplement"}  # also non-pet
+
+
+def is_shopping(question: str) -> bool:
+    """A request to see products (not advice or a pet-care question): answered with cards, no long reply."""
+    if _ADVICE.search(question):
+        return False
+    if is_about(question) and _ITEMS.search(question):
+        return True
+    return bool(_BUY.search(question)) and in_catalogue(question)
+
+
+def _wanted(query: str) -> set[str]:
+    """The words of a request that describe the thing asked for."""
+    return _words(query) - {_SAME.get(w, w) for w in _IGNORE} - _IGNORE
+
+
+def _slug_words(url: str) -> set[str]:
+    return _words(url.rstrip("/").rsplit("/", 1)[-1])
+
+
+def in_catalogue(question: str) -> bool:
+    """Does SniffyNose sell what was asked for, even if no pet is mentioned ("show me chew bones")?
+
+    It must name a kind of product or a brand, and one product must match every word. A lone everyday word
+    such as "food" is not enough, as it may well mean something else.
+    """
+    wanted = _wanted(question)
+    if not wanted or wanted <= _EVERYDAY:
+        return False
+    try:
+        if not (_ITEMS.search(question) or any(wanted & _slug_words(u) for u in _sitemap("brands"))):
+            return False
+        return any(wanted <= _slug_words(u) for u in _sitemap("products"))
+    except live.ToolError:
+        return False
+
+
+def warm_up() -> None:
+    """Fetch the product and page lists ahead of the first question."""
+    for kind in SITEMAPS:
+        try:
+            _sitemap(kind)
+        except live.ToolError:
+            return
 
 
 def is_about(question: str) -> bool:
@@ -54,6 +110,15 @@ def _words(text: str) -> set[str]:
 def _price_limit(query: str) -> float | None:
     m = re.search(r"(?:under|below|less than|within|upto|up to)\s*(?:rs\.?|inr|₹)?\s*([\d,]{2,7})", query, re.I)
     return float(m.group(1).replace(",", "")) if m else None
+
+
+def compare_links(query: str) -> list[dict]:
+    """Ready-made searches on other shops. These are links only: nothing is read from those sites."""
+    words = [w for w in re.findall(r"[A-Za-z0-9]+", query)
+             if not _BRAND.fullmatch(w) and w.lower() not in _IGNORE - {"for", "pet"} and w.lower() != "sniffy"]
+    q = quote_plus(" ".join(words) or query)
+    return [{"name": "Amazon.in", "url": f"https://www.amazon.in/s?k={q}"},
+            {"name": "Google Shopping", "url": f"https://www.google.com/search?tbm=shop&q={q}"}]
 
 
 def _get(url: str) -> str:
@@ -82,7 +147,7 @@ def _best(urls: list[str], wanted: set[str], limit: int) -> list[str]:
     kind = wanted - _SPECIES
     scored = []
     for url in urls:
-        slug = _words(url.rstrip("/").rsplit("/", 1)[-1])
+        slug = _slug_words(url)
         score = len(wanted & slug)
         if score and (not kind or kind & slug):
             scored.append((-score, len(slug), url))
@@ -133,7 +198,7 @@ def _read_page(url: str) -> dict | None:
 
 
 def search(query: str) -> dict:
-    wanted = _words(query) - {_SAME.get(w, w) for w in _IGNORE} - _IGNORE
+    wanted = _wanted(query)
     limit = _price_limit(query)
     out: dict = {"source": "SniffyNose (sniffynose.com)", "products": [], "pages": []}
 
@@ -141,13 +206,15 @@ def search(query: str) -> dict:
     services_only = bool(wanted & _SERVICES) and not things  # "grooming for my dog" is not a shopping question
     product_urls = [] if services_only or not wanted else \
         _best(_sitemap("products"), wanted - _SERVICES, 14 if limit else MAX_PRODUCTS)
-    with ThreadPoolExecutor(max_workers=4) as pool:  # a few pages at a time, to be gentle on the site
+    with ThreadPoolExecutor(max_workers=6) as pool:  # a few pages at a time, to be gentle on the site
         products = [p for p in pool.map(_read_product, product_urls) if p]
     if limit:
         products = [p for p in products if isinstance(p["price_inr"], (int, float)) and p["price_inr"] <= limit]
         out["price_limit_inr"] = limit
     products.sort(key=lambda p: not p["in_stock"])  # things you can actually buy come first
     out["products"] = products[:MAX_PRODUCTS]
+    if product_urls or (wanted and not services_only):
+        out["compare"] = compare_links(query)
 
     page_urls = _best(_sitemap("static"), wanted, 2) if wanted else []
     shopping = bool(wanted) and not services_only and not page_urls

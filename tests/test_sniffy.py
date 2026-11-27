@@ -56,6 +56,23 @@ def test_routing(question, expected):
     assert sniffy.is_about(question) is expected
 
 
+@pytest.mark.parametrize("question,expected", [
+    ("show me dog food", True), ("any cat toys under 500", True), ("I need a dog harness", True),
+    ("can my dog eat chocolate food", False), ("how often should I buy dog food", False), ("what is sniffynose", False),
+    ("book grooming", False), ("my cat is vomiting after food", False), ("food prices in India", False),
+])
+def test_shopping_requests(site, question, expected):
+    assert sniffy.is_shopping(question) is expected
+
+
+@pytest.mark.parametrize("question,expected", [
+    ("show me rope toys", True), ("I want chicken food", True), ("show me food", False),
+    ("find me a flight to Pune", False), ("show me a rocket toy", False), ("what is the news on rope toys", False),
+])
+def test_sold_here_even_without_naming_a_pet(site, question, expected):
+    assert sniffy.is_shopping(question) is expected
+
+
 def test_products_with_price_stock_and_picture(site):
     out = sniffy.search("show me dog food")
     names = [p["name"] for p in out["products"]]
@@ -114,6 +131,21 @@ def test_product_cards_for_the_screen(site):
     assert "cdn.example.com" not in told  # pictures aren't sent to the model
     card = session.cards[0]
     assert card["title"] == "Chicken Dog Food" and card["snippet"] == "₹1,738 · In stock" and card["image"]
+
+
+def test_screen_gets_sources_and_compare_links(site):
+    session = live.Session("dog food")
+    told = session.run("sniffynose", json.dumps({"query": "SniffyNose dog food for pomeranian"}))
+    assert "amazon" not in told.lower()  # links are for the screen, not for the model to read out
+    assert session.sources and all(s["name"] == "sniffynose.com" for s in session.sources)
+    assert [x["name"] for x in session.shops] == ["Amazon.in", "Google Shopping"]
+    assert session.shops[0]["url"] == "https://www.amazon.in/s?k=dog+food+for+pomeranian"
+    assert not any("amazon" in u or "google" in u for u in site)  # nothing is read from those shops
+
+
+def test_list_answers_are_not_read_as_dashes():
+    raw = "Here are some options: - Drools Wet Food, ₹700.\n- SuperCoat Dry Food.\n2. A third one."
+    assert llm.clean_for_speech(raw) == "Here are some options: Drools Wet Food, ₹700. SuperCoat Dry Food. A third one."
 
 
 def test_pet_questions_must_use_the_lookup_first(monkeypatch):

@@ -38,9 +38,11 @@ INDIA_RULES = (
 
 SNIFFY_RULES = (
     "For anything about SniffyNose or SniffyNest, or about pet products, prices or services, use the sniffynose "
-    "tool first and answer from what it returns. Say prices in rupees and that they are from SniffyNose, and say "
-    "the items are on screen. Name at most three. If it finds nothing, say so before suggesting anything else. For "
-    "a pet's illness or safety, advise seeing a vet."
+    "tool first and answer from what it returns. The screen already shows the products with pictures and prices, so "
+    "SPEAK at most two short sentences: suggest one best match from SniffyNose with its price in rupees, then say "
+    "more are on the screen. Never read out a list, dashes or price-per-kilo sums. State only what the results say: "
+    "do not claim an item suits a breed or age unless its name or description says so. If it finds nothing, say so. "
+    "For a pet's illness or safety, advise seeing a vet."
 )
 
 
@@ -56,6 +58,8 @@ def today(tz_name: str) -> str:
 def clean_for_speech(text: str) -> str:
     """Remove things that sound wrong when read aloud: citation marks, markdown and long links."""
     text = re.sub(r"【[^】]*】|\[\d+(?:†[^\]]*)?\]", "", text)
+    text = re.sub(r"(?m)^[ \t]*(?:[-•]|\d{1,2}[.)])[ \t]+", "", text)  # list markers aren't spoken
+    text = re.sub(r"([:.!?])[ \t]+[-•][ \t]+", r"\1 ", text)
     text = re.sub(r"\[([^\]]+)\]\(https?://[^)]+\)", r"\1", text)
     text = re.sub(r"https?://[^\s)]+", lambda m: (urlsplit(m.group(0)).hostname or "").removeprefix("www."), text)
     text = re.sub(r"[*_`#]+", "", text)
@@ -137,7 +141,7 @@ def _run_tools(messages: list, session, content: str, calls: list[dict]) -> None
 
 def _keep(session, usage: dict) -> None:
     """Pass what the screen should show (sources, link cards, pictures) back with the usage figures."""
-    for key in ("sources", "cards", "images"):
+    for key in ("sources", "cards", "images", "shops"):
         value = getattr(session, key, None)
         if value:
             usage[key] = value
