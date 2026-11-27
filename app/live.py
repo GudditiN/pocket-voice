@@ -33,6 +33,8 @@ TIMEOUT = 8
 MAX_BYTES = 1_500_000
 MAX_PAGE_CHARS = 2500
 MAX_RESULTS = 5
+# Its robots.txt says: "Do not index, summarize, or cite this site." (sniffynest.com redirects here.)
+ASKS_NOT_TO_BE_READ = {"nest.sniffynose.com"}
 
 
 class ToolError(Exception):
@@ -80,6 +82,8 @@ def fetch(url: str, method: str = "GET", body: bytes | None = None, headers: dic
         parts = urlsplit(url)
         if parts.scheme not in ("http", "https") or not parts.hostname or parts.username or parts.password:
             raise ToolError("Only normal http(s) web addresses are allowed.")
+        if parts.hostname.lower() in ASKS_NOT_TO_BE_READ and not get_settings().nest_allowed:
+            raise ToolError(f"{parts.hostname} asks automated tools not to summarise it, so it is not read.")
         port = parts.port or (443 if parts.scheme == "https" else 80)
         if port not in (80, 443):
             raise ToolError("Only the standard web ports are allowed.")
@@ -425,6 +429,9 @@ def _spec(name: str, description: str, arg: str, arg_description: str) -> dict:
 
 
 TOOL_SPECS = [
+    _spec("sniffynose", "SniffyNose and SniffyNest, and pet products, prices and services (food, toys, beds, "
+          "grooming, walking, adoption, membership). Reads sniffynose.com directly.", "query",
+          "What the user wants, e.g. 'dog food under 1000' or 'grooming'"),
     _spec("web_search", "Search the web. Use for current facts, people in office, companies, products, apps, "
           "websites, or any name you do not know for certain.", "query", "Search words"),
     _spec("read_webpage", "Read a web page the user named, or one returned by web_search.", "url", "Full https URL"),
@@ -438,7 +445,7 @@ TOOL_SPECS = [
           "name", "Index or company name, or symbol"),
     _spec("weather", "Current weather and short forecast.", "place", "City name"),
 ]
-_TOOLS = {"web_search": ("query", web_search), "read_webpage": ("url", read_webpage), "news": ("query", news),
+_TOOLS = {"sniffynose": ("query", lambda q: sniffy.search(q)), "web_search": ("query", web_search), "read_webpage": ("url", read_webpage), "news": ("query", news),
           "wikipedia": ("topic", wikipedia), "office_holder": ("office", office_holder),
           "market_quote": ("name", market_quote), "weather": ("place", weather)}
 
@@ -448,7 +455,7 @@ _DOMAIN = re.compile(r"\b((?:[a-z0-9-]+\.)+(?:com|in|org|net|io|ai|co|app|dev|ed
 
 # ---------------------------------------------------------------- cache
 # Seconds a successful result is reused, so repeat questions answer faster and free sources aren't hammered.
-CACHE_SECONDS = {"market_quote": 60, "news": 300, "weather": 600, "web_search": 600, "read_webpage": 600,
+CACHE_SECONDS = {"sniffynose": 600, "market_quote": 60, "news": 300, "weather": 600, "web_search": 600, "read_webpage": 600,
                  "wikipedia": 3600, "office_holder": 3600}
 
 
@@ -507,6 +514,7 @@ class Session:
         self.guessable = {f"{n}.{tld}" for n in names for tld in ("com", "in")}
         self.result_urls: set[str] = set()
         self.sources: list[dict] = []
+        self.first_tool: str | None = None  # a tool that must be called before answering
         self.cards: list[dict] = []  # links (with pictures) to show on screen
         self.images: list[str] = []  # extra pictures to show on screen
 
@@ -547,7 +555,19 @@ class Session:
                 self.cards.append({"title": _clip(title, 120) or url, "url": url, "snippet": _clip(snippet, 160),
                                    "image": picture(image)})
 
-        if tool == "read_webpage":
+        if tool == "sniffynose":
+            for p in data.get("products", [])[:4]:
+                low = p.get("price_inr")
+                price = f"₹{low:,}" if isinstance(low, (int, float)) else ""
+                if price and p.get("price_up_to_inr"):
+                    price = f"from {price}"
+                stock = "In stock" if p.get("in_stock") else "Out of stock"
+                card(p["name"], p["url"], " · ".join(x for x in (price, stock) if x), p.get("image"))
+            if data.get("sniffynest"):
+                card(data["sniffynest"]["title"], data["sniffynest"]["url"])
+            for page in data.get("pages", []):
+                card(page["title"], page["url"], page.get("description"), page.get("image"))
+        elif tool == "read_webpage":
             card(data.get("title"), data.get("url"), data.get("description"), data.get("image"))
         elif tool == "office_holder" and data.get("person"):
             p = data["person"]
@@ -580,6 +600,8 @@ class Session:
                 if not self.may_read(value):
                     raise ToolError("Only pages the user named or that appear in search results can be read. "
                                     "Use web_search first.")
+            if tool == "sniffynose" and not get_settings().sniffynose:
+                raise ToolError("The SniffyNose lookup is switched off.")
             data = cached_call(tool, function, value)
             self._remember(data)
             self._cite(data)
@@ -590,3 +612,6 @@ class Session:
         except Exception:  # a broken data source must never break the answer
             log.exception("tool %s failed", tool)
             return json.dumps({"error": "The tool failed."})
+
+
+import sniffy  # noqa: E402  (sniffy.py uses the fetch and cache helpers above)

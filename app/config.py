@@ -86,6 +86,8 @@ class Settings:
     fast_reply: bool  # speak while the answer is still being written
     fillers: bool  # short "let me check" phrases while waiting
     warm_up: bool  # load the voice model at startup
+    sniffynose: bool  # answer SniffyNose and pet-shopping questions from sniffynose.com
+    nest_allowed: bool  # set only if you own SniffyNest and allow it to be read
 
     @property
     def voice_dir(self) -> Path:
@@ -145,4 +147,6 @@ def get_settings() -> Settings:
         fast_reply=e("FAST_REPLY", "1").lower() in ("1", "true", "yes"),
         fillers=e("FILLERS", "1").lower() in ("1", "true", "yes"),
         warm_up=e("POCKET_WARMUP", "1").lower() in ("1", "true", "yes"),
+        sniffynose=e("SNIFFYNOSE", "1").lower() in ("1", "true", "yes"),
+        nest_allowed=e("SNIFFYNEST_ALLOWED", "0").lower() in ("1", "true", "yes"),
     )

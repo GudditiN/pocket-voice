@@ -25,7 +25,8 @@ def transcribe(wav_bytes: bytes) -> str:
     client = _groq_client(s.request_timeout_s)
     try:
         resp = client.audio.transcriptions.create(
-            file=("question.wav", wav_bytes), model=s.asr_model, language="en", temperature=0.0
+            file=("question.wav", wav_bytes), model=s.asr_model, language="en", temperature=0.0,
+            **({"prompt": "SniffyNose, SniffyNest."} if s.sniffynose else {})  # helps spell the names
         )
     except AppError:
         raise

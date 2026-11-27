@@ -79,6 +79,7 @@ with a live dashboard showing CPU, memory and latency.
 | [app/tts.py](app/tts.py) | PocketTTS model, named voice profiles, tuning |
 | [app/asr.py](app/asr.py), [app/llm.py](app/llm.py) | Groq calls (optional local Whisper) and the tool-calling loop |
 | [app/sentences.py](app/sentences.py), [app/player.py](app/player.py) | Cut the streaming answer into sentences; play audio pieces in the browser |
+| [app/sniffy.py](app/sniffy.py) | SniffyNose products, prices and services from its public pages |
 | [app/cards.py](app/cards.py) | Link cards and pictures shown with an answer |
 | [app/live.py](app/live.py) | Live-data tools: search, web pages, news, office holders, markets, weather |
 | [app/audio.py](app/audio.py) | Decode, trim, level check and boost |
@@ -214,6 +215,15 @@ your question → model picks tools → search / read / look up → model writes
 **Get a Tavily key (recommended).** DuckDuckGo often blocks automated searches. [Tavily](https://tavily.com) lists 1,000 free searches a month with no card. Add it as `TAVILY_API_KEY` (Codespaces secret or `.env`) and restart.
 
 Each answer lists its **sources** as links. Check anything important.
+
+### 🐾 SniffyNose and pet questions
+With web search on, questions about **SniffyNose, SniffyNest, pet products, prices or services** are answered from [sniffynose.com](https://sniffynose.com) itself: the app searches its published sitemaps, reads the matching pages, and shows product cards with rupee prices, stock status and pictures.
+
+- Try: "Dog food under 1000", "Do you have a dog harness?", "Grooming for my dog", "What is SniffyNose?"
+- If nothing matches, it says so. Prices and stock are as the page showed them (cached for 10 minutes).
+- **Site rules respected:** sniffynose.com's `robots.txt` allows search and AI answers that link back (`ai-input=yes`, `use=reference`), **forbids training** (`ai-train=no`) and disallows `/api/`. Never use its content as training data.
+- **SniffyNest:** `nest.sniffynose.com/robots.txt` says not to summarise or cite it, so the app only links to it. If you own the site, fix that file (or set `SNIFFYNEST_ALLOWED=1`).
+- Switch off with `SNIFFYNOSE=0`.
 
 ### 🖼️ Links and pictures on screen
 With web search on, the answer is **spoken** while the screen **shows** what was found:
@@ -549,6 +559,8 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | `FAST_REPLY` | `1` | Speak while the answer is being written |
 | `FILLERS` | `1` | Short waiting phrases in your voice |
 | `POCKET_WARMUP` | `1` | Load the voice model at startup |
+| `SNIFFYNOSE` | `1` | Answer SniffyNose and pet-shopping questions from sniffynose.com |
+| `SNIFFYNEST_ALLOWED` | `0` | Set only if you own SniffyNest and allow reading it |
 | `LIVE_DATA` | `1` | Web search switch on by default (`0` = off) |
 | `TAVILY_API_KEY` | blank | Dependable web search |
 | `LIVE_REGION` | `IN` | Country for news and search |

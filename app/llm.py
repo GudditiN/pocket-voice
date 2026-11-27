@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import live
+import sniffy
 from asr import _groq_client
 from config import get_settings
 from errors import AppError, from_groq
@@ -32,6 +33,14 @@ LIVE_RULES = (
 INDIA_RULES = (
     "The user is in India. Unless they say otherwise, assume Indian context: prefer Indian sources, search with "
     "India in mind, give money in rupees with lakh and crore, and give times in Indian Standard Time."
+)
+
+
+SNIFFY_RULES = (
+    "For anything about SniffyNose or SniffyNest, or about pet products, prices or services, use the sniffynose "
+    "tool first and answer from what it returns. Say prices in rupees and that they are from SniffyNose, and say "
+    "the items are on screen. Name at most three. If it finds nothing, say so before suggesting anything else. For "
+    "a pet's illness or safety, advise seeing a vet."
 )
 
 
@@ -72,8 +81,12 @@ def _prepare(history: list[dict], question: str, system_prompt: str | None, use_
         system += "\n" + INDIA_RULES
     if use_web:
         system += "\n" + LIVE_RULES
+        if s.sniffynose:
+            system += "\n" + SNIFFY_RULES
     messages = [{"role": "system", "content": system}, *recent, {"role": "user", "content": question}]
     session = live.Session(question) if use_web else None
+    if session and s.sniffynose and sniffy.is_about(question):
+        session.first_tool = "sniffynose"  # don't leave it to chance for these questions
 
     base: dict = {"model": s.llm_model, "temperature": 0.6, "max_completion_tokens": 400}
     if s.llm_model.startswith("openai/gpt-oss"):
@@ -84,10 +97,13 @@ def _prepare(history: list[dict], question: str, system_prompt: str | None, use_
     return client, s, base, messages, session
 
 
-def _request(client, s, base: dict, messages: list, use_web: bool, round_no: int, **extra):
+def _request(client, s, base: dict, messages: list, use_web: bool, round_no: int, first_tool: str | None = None,
+             **extra):
     kwargs = {**base, "messages": messages, **extra}
     if use_web:  # on the last round the model must answer with what it has
         kwargs.update(tools=live.TOOL_SPECS, tool_choice="auto" if round_no < MAX_TOOL_ROUNDS else "none")
+        if first_tool and round_no == 0:
+            kwargs["tool_choice"] = {"type": "function", "function": {"name": first_tool}}
     try:
         return client.chat.completions.create(**kwargs)
     except AppError:
@@ -137,7 +153,7 @@ def answer(history: list[dict], question: str, system_prompt: str | None = None,
     usage = {"prompt_tokens": None, "completion_tokens": None}
     msg = None
     for round_no in range(MAX_TOOL_ROUNDS + 1):
-        resp = _request(client, s, base, messages, use_web, round_no)
+        resp = _request(client, s, base, messages, use_web, round_no, getattr(session, "first_tool", None))
         _count(usage, getattr(resp, "usage", None))
         msg = resp.choices[0].message
         calls = getattr(msg, "tool_calls", None)
@@ -159,7 +175,7 @@ def answer_stream(history: list[dict], question: str, system_prompt: str | None,
     usage.update(prompt_tokens=None, completion_tokens=None)
     wrote = False
     for round_no in range(MAX_TOOL_ROUNDS + 1):
-        stream = _request(client, s, base, messages, use_web, round_no, stream=True)
+        stream = _request(client, s, base, messages, use_web, round_no, getattr(session, "first_tool", None), stream=True)
         content, calls = "", {}
         try:
             for chunk in stream:
