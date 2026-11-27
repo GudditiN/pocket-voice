@@ -10,7 +10,8 @@ def setup_ok(monkeypatch):
     store.init()
     monkeypatch.setattr(tts, "profile_exists", lambda *a: True)
     monkeypatch.setattr(asr, "transcribe", lambda b: "what is the capital of France")
-    monkeypatch.setattr(llm, "answer", lambda h, q, p=None: ("Paris.", {"prompt_tokens": 12, "completion_tokens": 2}))
+    monkeypatch.setattr(llm, "answer",
+                        lambda h, q, p=None, **k: ("Paris.", {"prompt_tokens": 12, "completion_tokens": 2}))
     monkeypatch.setattr(tts, "synthesize", lambda t, **k: (b"RIFFfake", 1.5))
 
 

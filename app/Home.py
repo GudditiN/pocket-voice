@@ -31,6 +31,10 @@ if voices:
     preferred = ss.get("chosen_voice") if ss.get("chosen_voice") in voices else tts.active_profile()
     voice = st.selectbox("🔊 Answer in this voice", voices, index=voices.index(preferred))
     ss["chosen_voice"] = voice
+use_web = st.toggle("🌐 Search the web for fresh facts", value=ss.get("use_web", s.live_data),
+                    help="Searches and reads web pages, news, market prices and weather. Your search words are sent "
+                         "to those services. Answers take a little longer.")
+ss["use_web"] = use_web
 
 with st.sidebar:
     st.subheader("Settings")
@@ -56,13 +60,16 @@ for i, turn in enumerate(ss["turns"]):
         newest = i == len(ss["turns"]) - 1
         st.audio(turn["wav"], format="audio/wav", autoplay=bool(turn.pop("fresh", False)) and newest)
         st.caption(f"AI-generated voice: {turn['voice']} · {turn['timing']}")
+        if turn.get("sources"):
+            links = " · ".join(f"[{x['name']}]({x['url'].replace('(', '%28').replace(')', '%29')})" for x in turn["sources"])
+            st.caption(f"🌐 Sources: {links}")
 
 
 def process(audio_bytes=None, text=None):
     """Run one turn with a live status box; on success add it to the conversation and redraw."""
     with st.status("Processing…", expanded=True) as status:
         result = pipeline.run_turn(
-            audio_bytes, ss["history"], ss["prompt"], text=text, profile=voice,
+            audio_bytes, ss["history"], ss["prompt"], text=text, profile=voice, use_web=use_web,
             on_status=lambda label: status.update(label=label + ("…" if label not in ("Completed", "Failed") else "")),
         )
         if result.status != "success":
@@ -76,7 +83,8 @@ def process(audio_bytes=None, text=None):
     ss["history"] += [{"role": "user", "content": result.question},
                       {"role": "assistant", "content": result.answer}]
     ss["turns"].append({"q": result.question, "a": result.answer, "wav": result.audio_wav, "voice": voice,
-                        "timing": f"{t['total'] / 1000:.1f}s ({' · '.join(parts)})", "fresh": True})
+                        "timing": f"{t['total'] / 1000:.1f}s ({' · '.join(parts)})", "sources": result.sources,
+                        "fresh": True})
     st.rerun()
 
 

@@ -50,7 +50,7 @@
 <text x="1040.0" y="399.5" font-size="13.5" fill="#4B5563" text-anchor="middle">asr.py</text>
 <rect x="925" y="450" width="230" height="80" rx="10" fill="#FFFFFF" stroke="#4F46E5" stroke-width="1.5"/>
 <text x="1040.0" y="483.5" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Answer client</text>
-<text x="1040.0" y="504.5" font-size="13.5" fill="#4B5563" text-anchor="middle">llm.py · adds chat history</text>
+<text x="1040.0" y="504.5" font-size="13.5" fill="#4B5563" text-anchor="middle">llm.py + live.py · tools</text>
 <rect x="415" y="730" width="155" height="100" rx="10" fill="#FFFBEB" stroke="#D97706" stroke-width="2"/>
 <text x="492.5" y="764.0" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Monitor</text>
 <text x="492.5" y="785.0" font-size="13.5" fill="#4B5563" text-anchor="middle">monitor.py</text>
@@ -258,4 +258,18 @@
 <rect x="1492" y="34" width="82" height="30" rx="15" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
 <circle cx="1508" cy="49" r="5.5" fill="#0F80CC"/>
 <text x="1520" y="54" font-size="13" fill="#111827" text-anchor="start" font-weight="bold">SQLite</text>
+<rect x="1275" y="600" width="265" height="110" rx="10" fill="#FFFFFF" stroke="#14B8A6" stroke-width="2"/>
+<text x="1407" y="628" font-size="17" fill="#111827" text-anchor="middle" font-weight="bold">Live data (read-only)</text>
+<text x="1407" y="651" font-size="13.5" fill="#4B5563" text-anchor="middle">Tavily or DuckDuckGo · web pages</text>
+<text x="1407" y="669" font-size="13.5" fill="#4B5563" text-anchor="middle">Google News · Wikipedia</text>
+<text x="1407" y="687" font-size="13.5" fill="#4B5563" text-anchor="middle">Yahoo Finance · Open-Meteo</text>
+<circle cx="1279" cy="604" r="17" fill="#0F766E" stroke="#FFFFFF" stroke-width="2.5"/>
+<g transform="translate(1268 593) scale(0.92)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></g>
+<path d="M 1155 516 L 1196 516 L 1196 655 L 1275 655" fill="none" stroke="#4F46E5" stroke-width="2.6" stroke-linejoin="round"/>
+<polygon points="1275,655 1262,648 1262,662" fill="#4F46E5"/><polygon points="1155,516 1168,523 1168,509" fill="#4F46E5"/>
+<circle cx="1196" cy="585" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="1196" y="590" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">W</text>
+<circle cx="1069" cy="1041" r="14" fill="#4F46E5" stroke="#FFFFFF" stroke-width="2"/>
+<text x="1069" y="1046" font-size="14" fill="#FFFFFF" text-anchor="middle" font-weight="bold">W</text>
+<text x="1093" y="1046" font-size="14" fill="#111827" text-anchor="start">Web search on: fresh facts, search words leave</text>
 </svg>

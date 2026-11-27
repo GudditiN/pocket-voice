@@ -23,7 +23,7 @@ with a live dashboard showing CPU, memory and latency.
 | [1. Aim](#-aim) | [6. Record a good sample](#step-1--record-a-good-sample) | [13. Settings](#-customize-the-app) |
 | [2. Architecture & data flow](#-architecture-and-data-flow) | [7. Clean the audio](#step-2--clean-the-audio) | [14. Size & data](#-size-resources-and-data) |
 | [3. About PocketTTS](#-about-pockettts) | [8. Create, compare, tune](#step-3--create-the-voice-profile) | [15. Dashboard](#-the-dashboard) |
-| [4. Quick start](#-quick-start-github-codespaces) · [Share a link](#-share-a-public-link) | [9. Clear / delete](#step-6--clear-delete-or-reset-a-voice) | [16. Tests & benchmark](#-tests-and-benchmark) |
+| [4. Quick start](#-quick-start-github-codespaces) · [Live answers](#-live-answers-web-search) · [Share a link](#-share-a-public-link) | [9. Clear / delete](#step-6--clear-delete-or-reset-a-voice) | [16. Tests & benchmark](#-tests-and-benchmark) |
 | [5. Using the app](#-using-the-app) | [10. Enhance](#-enhance-the-result) | [17. Privacy](#-privacy-and-responsible-use) |
 | | [11. Train](#-train-or-fine-tune-advanced) | [18. Troubleshooting](#-troubleshooting) |
 | | [12. PocketTTS command line](#-use-pockettts-from-the-command-line) | [19. Licenses & sources](#-licenses-and-sources) |
@@ -60,7 +60,7 @@ with a live dashboard showing CPU, memory and latency.
 |---|---|---|---|
 | 1 | Ask | Browser sends microphone audio (WAV) or typed text. Silent audio is rejected. | none |
 | 2 | Transcribe | Groq Whisper returns text. Skipped for typed questions. | question audio → Groq |
-| 3 | Answer | A Groq chat model replies using your system prompt and recent history. | question + history → Groq |
+| 3 | Answer | A Groq chat model replies using your system prompt and recent history. With [live answers](#-live-answers-web-search) on, it first fetches fresh data. | question + history → Groq; search words → web services |
 | 4 | Speak | PocketTTS turns the reply into speech in your voice, on CPU. | none |
 | 5 | Play | Text and audio go back to your browser. | none |
 | 6 | Measure | One row of timings and counts is saved to SQLite. | none |
@@ -77,7 +77,8 @@ with a live dashboard showing CPU, memory and latency.
 | [app/pages/2_Dashboard.py](app/pages/2_Dashboard.py) | System and voice analytics |
 | [app/pipeline.py](app/pipeline.py) | One turn: ASR → LLM → TTS, timing, error categories |
 | [app/tts.py](app/tts.py) | PocketTTS model, named voice profiles, tuning |
-| [app/asr.py](app/asr.py), [app/llm.py](app/llm.py) | Groq calls (optional local Whisper) |
+| [app/asr.py](app/asr.py), [app/llm.py](app/llm.py) | Groq calls (optional local Whisper) and the tool-calling loop |
+| [app/live.py](app/live.py) | Live-data tools: search, web pages, news, office holders, markets, weather |
 | [app/audio.py](app/audio.py) | Decode, trim, level check and boost |
 | [app/monitor.py](app/monitor.py), [app/store.py](app/store.py) | psutil sampling and SQLite storage |
 | [app/config.py](app/config.py), [app/errors.py](app/errors.py), [app/ui.py](app/ui.py) | Settings and `.env`, error types, page styling and password |
@@ -123,6 +124,7 @@ Repository → *Settings → Secrets and variables → Codespaces*:
 |---|---|---|
 | `GROQ_API_KEY` | ✅ | Speech recognition and answers |
 | `HF_TOKEN` | ✅ | Download the voice-cloning weights |
+| `TAVILY_API_KEY` | optional | More dependable [web search](#-live-answers-web-search) |
 | `APP_PASSWORD` | optional | Password gate for the app |
 | `ADMIN_PASSWORD` | optional | Manage voices on a [public link](#-share-a-public-link) |
 
@@ -159,6 +161,39 @@ docker build -t pocket-voice .
 docker run -e GROQ_API_KEY=... -e HF_TOKEN=... -p 8501:8501 -v pv-data:/data pocket-voice
 ```
 </details>
+
+---
+
+## 🔎 Live answers (web search)
+
+A language model only knows what existed when it was trained. With **Search the web for fresh facts** switched on (Assistant page, on by default), the model can fetch current information before answering. **Nothing is trained**: data is fetched at the moment you ask.
+
+```
+your question → model picks tools → search / read / look up → model writes the answer → your voice
+```
+
+| Tool | Source | Key needed | Good for |
+|---|---|---|---|
+| Web search | Tavily if `TAVILY_API_KEY` is set, otherwise DuckDuckGo, then Google News + Wikipedia | optional | companies, apps, products, current facts |
+| Read a web page | the site itself | no | "what is sniffynose.com?" |
+| Current office holder | Wikipedia | no | "who is the US president / Telangana CM?" |
+| News | Google News (last 7 days) | no | headlines |
+| Facts | Wikipedia | no | background |
+| Market prices | Yahoo Finance (may be delayed) | no | Nifty, Sensex, NSE shares, gold, crypto, currency |
+| Weather | Open-Meteo | no | today and tomorrow |
+
+**India first** (defaults): `LIVE_REGION=IN` and `APP_TIMEZONE=Asia/Kolkata` give Indian news and search results, NSE listings first, rupees (lakh/crore) and IST. Change them for another country.
+
+**Get a Tavily key (recommended).** DuckDuckGo often blocks automated searches. [Tavily](https://tavily.com) lists 1,000 free searches a month with no card. Add it as `TAVILY_API_KEY` (Codespaces secret or `.env`) and restart.
+
+Each answer lists its **sources** as links. Check anything important.
+
+**Limits and safety**
+- Search words and requested pages go to the services above. Switch it off for private questions.
+- Web pages can be wrong or try to mislead the model. The tools only read, only public web addresses are contacted, and a page can be opened only if you named the site, or it came from the search.
+- Answers take longer and use more Groq tokens, so free plans may hit rate limits sooner.
+- Free services are rate limited and their terms apply (several are meant for personal, non-commercial use). Market data is not investment advice.
+- Telugu or Hindi **speech** is separate: see [Next phases](docs/NEXT_PHASES.md).
 
 ---
 
@@ -466,7 +501,7 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 |---|---|---|
 | `GROQ_API_KEY` | none | **Required** |
 | `HF_TOKEN` | none | **Required for cloning** |
-| `GROQ_LLM_MODEL` | `openai/gpt-oss-20b` | Answer model (`openai/gpt-oss-120b` is the larger option). Llama models on Groq are marked Enterprise and return 404 on regular keys. |
+| `GROQ_LLM_MODEL` | `openai/gpt-oss-20b` | Answer model (`openai/gpt-oss-120b` is the larger option). The older Llama models were retired for free and developer plans on 16 August 2026 and return 404. |
 | `GROQ_ASR_MODEL` | `whisper-large-v3-turbo` | Speech recognition (`whisper-large-v3`) |
 | `ASR_BACKEND` | `groq` | `local` runs faster-whisper after `uv sync --extra local-asr` |
 | `SYSTEM_PROMPT` | short spoken answers | Personality and style (also editable in the sidebar) |
@@ -474,6 +509,10 @@ Put settings in `.env` (copy [.env.example](.env.example)), your shell, Docker `
 | `REQUEST_TIMEOUT_S` | `30` | Groq timeout |
 | `POCKET_QUANTIZE` | `0` | `1` enables int8 quantization |
 | `POCKET_DENOISE` | `off` | Default noise reduction for new voices: `off`, `light`, `medium`, `strong` |
+| `LIVE_DATA` | `1` | Web search switch on by default (`0` = off) |
+| `TAVILY_API_KEY` | blank | Dependable web search |
+| `LIVE_REGION` | `IN` | Country for news and search |
+| `APP_TIMEZONE` | `Asia/Kolkata` | Time zone for today's date |
 | `POCKET_TEMP`, `POCKET_STEPS`, `POCKET_EOS_THRESHOLD` | blank (0.3, 1, −4) | Voice tuning: see [Step 5](#step-5--tune-how-it-speaks) |
 | `DATA_DIR` | `./data` | Voices and database location |
 | `RETENTION_DAYS` | `14` | Age limit for samples and errors |
@@ -575,6 +614,7 @@ The benchmark saves `data/benchmark.json`.
 - API keys stay on the server. `.env`, `data/`, `.wav` and `.safetensors` files are git-ignored.
 - Voice files are stored with owner-only permissions and are never served by URL.
 - Your question audio or text and recent chat history are sent to Groq ([privacy policy](https://groq.com/privacy-policy/)). Your voice sample and profile are not.
+- With web search on, search words and page requests also go to Tavily or DuckDuckGo, Google News, Wikipedia, Yahoo Finance or Open-Meteo, as needed.
 - Keep the Codespaces port **Private**; consider `APP_PASSWORD`.
 - A public link exists only with `./run.sh --expose` and always requires a password: see [Share a public link](#-share-a-public-link).
 - **Prohibited by Kyutai:** cloning or impersonating a voice without explicit lawful consent; deception or disinformation, including presenting generated audio as real; unlawful, harmful or abusive content. See [Prohibited use](https://github.com/kyutai-labs/pocket-tts#prohibited-use).
@@ -596,6 +636,8 @@ The benchmark saves `data/benchmark.json`.
 | M4A rejected | Convert with the `afconvert` command in Step 1 |
 | "No voice profile yet" | Create one in Voice Setup |
 | Analytics storage unavailable | Check disk space and `DATA_DIR`; the assistant still works |
+| Old or made-up facts | Turn on **Search the web**; check the sources under the answer |
+| "Web search unavailable" or weak results | DuckDuckGo is blocking: set `TAVILY_API_KEY` |
 
 ---
 

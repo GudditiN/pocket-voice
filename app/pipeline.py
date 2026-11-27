@@ -27,6 +27,7 @@ class TurnResult:
     in_audio_s: float | None = None
     out_audio_s: float | None = None
     timings_ms: dict = field(default_factory=dict)
+    sources: list = field(default_factory=list)  # web pages used for the answer: [{'name','url'}]
 
 
 MAX_QUESTION_CHARS = 1000
@@ -34,7 +35,7 @@ MAX_QUESTION_CHARS = 1000
 
 def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str | None = None,
              on_status: Callable[[str], None] = lambda s: None, text: str | None = None,
-             profile: str | None = None) -> TurnResult:
+             profile: str | None = None, use_web: bool = False) -> TurnResult:
     """One turn. Pass a recording (audio_bytes), or typed text to skip speech recognition.
 
     profile: name of the voice that speaks the answer (default: the active one).
@@ -65,7 +66,8 @@ def run_turn(audio_bytes: bytes | None, history: list[dict], system_prompt: str 
 
         on_status("Generating response")
         t = time.perf_counter()
-        r.answer, usage = llm.answer(history, r.question, system_prompt)
+        r.answer, usage = llm.answer(history, r.question, system_prompt, use_web=use_web)
+        r.sources = usage.get("sources", [])
         r.timings_ms["llm"] = (time.perf_counter() - t) * 1000
 
         on_status("Generating speech")

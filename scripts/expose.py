@@ -203,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         wait_until_ready(app, args.port)
         # The tunnel process gets no passwords or API keys.
         clean = {k: v for k, v in os.environ.items()
-                 if k not in ("APP_PASSWORD", "ADMIN_PASSWORD", "GROQ_API_KEY", "HF_TOKEN")}
+                 if k not in ("APP_PASSWORD", "ADMIN_PASSWORD", "GROQ_API_KEY", "HF_TOKEN", "TAVILY_API_KEY")}
         tunnel = subprocess.Popen(
             [cloudflared, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{args.port}"],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=clean)

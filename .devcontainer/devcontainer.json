@@ -13,6 +13,7 @@
   "secrets": {
     "GROQ_API_KEY": { "description": "Groq API key (server-side only)" },
     "HF_TOKEN": { "description": "Hugging Face read token (needed for the gated PocketTTS voice-cloning weights)" },
+    "TAVILY_API_KEY": { "description": "Optional: free Tavily key for dependable web search" },
     "APP_PASSWORD": { "description": "Optional password to open the app" },
     "ADMIN_PASSWORD": { "description": "Optional: manage voices on a public link (./run.sh --expose)" }
   },

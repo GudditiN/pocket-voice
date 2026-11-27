@@ -77,6 +77,10 @@ class Settings:
     exposed: bool  # set by `./run.sh --expose`
     quantize: bool  # int8 quantization of the TTS model (applied at load, so it needs an app restart)
     denoise: str  # default noise reduction for new voice samples: off, light, medium or strong
+    live_data: bool  # default for the "search the web" switch
+    tavily_api_key: str  # optional: more dependable web search
+    live_region: str  # two-letter country code for news, e.g. IN or US
+    app_timezone: str  # used to tell the model today's date and time
 
     @property
     def voice_dir(self) -> Path:
@@ -129,4 +133,8 @@ def get_settings() -> Settings:
         exposed=e("POCKET_EXPOSED", "0").lower() in ("1", "true", "yes"),
         quantize=e("POCKET_QUANTIZE", "0").lower() in ("1", "true", "yes"),
         denoise=_choice("POCKET_DENOISE", ("off", "light", "medium", "strong"), "off"),
+        live_data=e("LIVE_DATA", "1").lower() in ("1", "true", "yes"),
+        tavily_api_key=e("TAVILY_API_KEY", "").strip(),
+        live_region=(e("LIVE_REGION", "") or "IN").strip().upper()[:2],
+        app_timezone=e("APP_TIMEZONE", "") or "Asia/Kolkata",
     )
